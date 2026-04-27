@@ -1,0 +1,30 @@
+appId: com.hermes.agent.ui
+productName: Hermes Agent
+
+publish:
+  provider: github
+  owner: vasicatalin
+  repo: hermes-agent-ui
+
+directories:
+  output: dist
+
+mac:
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  target:
+    - target: dmg
+    - target: zip
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

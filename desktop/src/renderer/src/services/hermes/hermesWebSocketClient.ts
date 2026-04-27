@@ -1,0 +1,152 @@
+/**
+ * Hermes WebSocket Client — Adapted for Electron.
+ *
+ * In Electron mode, the WebSocket connects to the backend through
+ * localhost (managed by the main process). The main process handles
+ * Python lifecycle, so we just need the port.
+ */
+
+import { useAgentStore } from '../../store/agentStore';
+
+// Check if running in Electron
+const isElectron = typeof window !== 'undefined' && !!window.hermesAPI;
+
+export class HermesWebSocketClient {
+  private static socket: WebSocket | null = null;
+  private static pingInterval: number | null = null;
+  private static reconnectTimeout: number | null = null;
+  private static isConnecting = false;
+
+  static async connect() {
+    if (this.socket || this.isConnecting) return;
+    this.isConnecting = true;
+    useAgentStore.getState().setHermesConnectionStatus('connecting');
+
+    // Get the backend URL from the main process
+    let wsUrl: string;
+    if (isElectron) {
+      try {
+        const status = await window.hermesAPI!.getStatus();
+        wsUrl = `ws://127.0.0.1:${status.port}`;
+      } catch {
+        wsUrl = 'ws://127.0.0.1:9119';
+      }
+    } else {
+      wsUrl = 'ws://localhost:9119';
+    }
+
+    try {
+      this.socket = new WebSocket(`${wsUrl}/api/ws`);
+
+      this.socket.onopen = () => {
+        console.log('Hermes WebSocket connected');
+        this.isConnecting = false;
+        useAgentStore.getState().setHermesConnectionStatus('connected');
+        useAgentStore.getState().setMode('idle');
+        
+        // Setup ping
+        this.pingInterval = window.setInterval(() => {
+          if (this.socket?.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 30000);
+      };
+
+      this.socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.handleMessage(data);
+        } catch (e) {
+          console.error('Failed to parse Hermes WebSocket message:', e);
+        }
+      };
+
+      this.socket.onclose = () => {
+        console.log('Hermes WebSocket disconnected');
+        useAgentStore.getState().setHermesConnectionStatus('disconnected');
+        this.cleanup();
+        this.scheduleReconnect();
+      };
+
+      this.socket.onerror = (error) => {
+        console.error('Hermes WebSocket error:', error);
+      };
+    } catch (error) {
+      console.error('Failed to instantiate WebSocket:', error);
+      this.isConnecting = false;
+      this.scheduleReconnect();
+    }
+  }
+
+  static disconnect() {
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+    this.cleanup();
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+  }
+
+  private static cleanup() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+    this.isConnecting = false;
+    this.socket = null;
+  }
+
+  private static scheduleReconnect() {
+    if (!this.reconnectTimeout) {
+      this.reconnectTimeout = window.setTimeout(() => {
+        this.reconnectTimeout = null;
+        this.connect();
+      }, 5000);
+    }
+  }
+
+  private static handleMessage(data: any) {
+    const store = useAgentStore.getState();
+    const { type, payload } = data;
+
+    switch (type) {
+      case 'status':
+        store.setMode(payload === 'running' ? 'agent' : 'idle');
+        break;
+        
+      case 'log':
+        store.addAction({
+          id: Date.now().toString(),
+          toolName: 'Hermes',
+          summary: payload.message || JSON.stringify(payload),
+          status: 'success',
+          timestamp: Date.now()
+        });
+        break;
+
+      case 'execution_step':
+        break;
+        
+      case 'stream_token':
+         break;
+
+      case 'pong':
+        break;
+
+      default:
+        console.warn('Unhandled Hermes WebSocket message type:', type);
+    }
+  }
+
+  /**
+   * Send a message through the WebSocket
+   */
+  static send(data: any): void {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(data));
+    }
+  }
+}

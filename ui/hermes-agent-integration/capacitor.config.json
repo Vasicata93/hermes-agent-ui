@@ -1,0 +1,13 @@
+{
+  "appId": "com.perplex.clone",
+  "appName": "Perplex Clone",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
+  }
+}

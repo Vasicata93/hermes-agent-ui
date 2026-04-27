@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Perplex Clone</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#191A1A" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="icon" href="/logo.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/logo.svg">
+    <meta name="description" content="A high-fidelity clone of Perplex AI.">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              pplx: {
+                primary: 'var(--bg-primary)',
+                secondary: 'var(--bg-secondary)',
+                hover: 'var(--bg-hover)',
+                border: 'var(--border-color)',
+                accent: 'var(--accent-color)', 
+                text: 'var(--text-primary)',
+                muted: 'var(--text-muted)',
+                'sidebar': 'var(--bg-sidebar)',
+                'card': 'var(--bg-card)',
+                'input': 'var(--bg-input)'
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+              serif: ['"Playfair Display"', 'Georgia', 'serif'],
+              mono: ['"JetBrains Mono"', 'monospace']
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      :root {
+        /* Premium Light Mode Variables (High Contrast) */
+        --bg-primary: #FFFFFF;
+        --bg-sidebar: #F9F9F9;
+        --bg-secondary: #F0F0EE;
+        --bg-hover: #E2E2E0;
+        --bg-card: #FFFFFF;
+        --bg-input: #FBFBF9;
+        --border-color: #C8C8C6;
+        --text-primary: #111111;
+        --text-muted: #4B4B4B;
+        --accent-color: #00838F;
+      }
+
+      /* Premium Dark Mode Variables (Lighter, Perplexity/Notion style) */
+      .dark {
+        --bg-primary: #191919;
+        --bg-sidebar: #202020;
+        --bg-secondary: #252525;
+        --bg-hover: #2F2F2F;
+        --bg-card: #202020;
+        --bg-input: #252525;
+        --border-color: #333333;
+        --text-primary: #EBEBEB;
+        --text-muted: #9B9B9B;
+        --accent-color: #20B8CD;
+      }
+
+      html, body {
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+        -webkit-font-smoothing: antialiased;
+        transition: background-color 0.15s, color 0.15s;
+        /* Mobile Optimizations */
+        overscroll-behavior-y: none; /* Prevent pull-to-refresh */
+        -webkit-tap-highlight-color: transparent; /* Remove blue highlight on tap */
+        touch-action: pan-x pan-y;
+      }
+
+      /* Custom scrollbar to match minimalist look */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .mb-safe {
+        margin-bottom: env(safe-area-inset-bottom);
+      }
+      .bottom-safe {
+        bottom: env(safe-area-inset-bottom);
+      }
+
+      @keyframes spin-y {
+        0% { transform: rotateY(0deg); }
+        100% { transform: rotateY(360deg); }
+      }
+      .animate-spin-y {
+        animation: spin-y 2s linear infinite;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fadeIn {
+        animation: fadeIn 0.1s ease-out forwards;
+      }
+
+      /* PRINT STYLES FOR DASHBOARD EXPORT */
+      @media print {
+        body {
+          background-color: white !important;
+          color: black !important;
+        }
+        /* Hide all UI elements except the dashboard container */
+        nav, header, aside, .sticky, button, input, textarea, .sidebar, .input-area {
+          display: none !important;
+        }
+        /* Target the dashboard container specifically */
+        #dashboard-container {
+          display: block !important;
+          position: static !important;
+          width: 100% !important;
+          height: auto !important;
+          background: white !important;
+          color: black !important;
+          overflow: visible !important;
+        }
+        /* Ensure charts print correctly */
+        .print-break-inside {
+          break-inside: avoid;
+        }
+        /* Reset dark mode variables for print */
+        .dark {
+          --bg-card: #ffffff;
+          --bg-secondary: #f3f4f6;
+          --text-primary: #000000;
+          --text-muted: #4b5563;
+          --border-color: #e5e7eb;
+        }
+      }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>

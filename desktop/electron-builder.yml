@@ -1,0 +1,92 @@
+appId: com.hermes.agent
+productName: Hermes Agent
+copyright: Copyright © 2026 Hermes Agent
+
+directories:
+  buildResources: build
+  output: dist
+
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+
+# Bundle the Python backend alongside the app
+extraResources:
+  - from: ../
+    to: hermes-backend
+    filter:
+      - '**/*.py'
+      - 'pyproject.toml'
+      - 'setup-hermes.sh'
+      - 'skills/**/*'
+      - 'optional-skills/**/*'
+      - '.env.example'
+      - 'uv.lock'
+      - 'constraints-termux.txt'
+      - 'agent/**/*'
+      - 'tools/**/*'
+      - 'hermes_cli/**/*'
+      - 'gateway/**/*'
+      - 'tui_gateway/**/*'
+      - 'cron/**/*'
+      - 'acp_adapter/**/*'
+      - 'plugins/**/*'
+      - 'hermes'
+      - '!**/__pycache__/**'
+      - '!**/node_modules/**'
+      - '!**/venv/**'
+      - '!**/.venv/**'
+      - '!**/tests/**'
+      - '!**/web/**'
+      - '!**/ui/**'
+      - '!**/ui-tui/**'
+      - '!**/desktop/**'
+      - '!**/.git/**'
+
+asarUnpack:
+  - resources/**
+
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    - NSDocumentsFolderUsageDescription: Hermes Agent needs access to your documents for file operations.
+    - NSDownloadsFolderUsageDescription: Hermes Agent needs access to downloads for file operations.
+  notarize: false
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+
+dmg:
+  artifactName: ${name}-${version}-${arch}.${ext}
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: Hermes Agent
+  uninstallDisplayName: Hermes Agent
+  createDesktopShortcut: always
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+
+publish:
+  provider: github
+  owner: Vasicata93
+  repo: hermes-agent-ui

@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Background Gradient (Dark Slate) -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#2C2E2E;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#191A1A;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Metallic Gradients for 3D Effect -->
+    <linearGradient id="silver-face" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F9FAFB;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#D1D5DB;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9CA3AF;stop-opacity:1" />
+    </linearGradient>
+    
+    <linearGradient id="silver-side-light" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#9CA3AF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4B5563;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="silver-side-dark" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#374151;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6B7280;stop-opacity:1" />
+    </linearGradient>
+
+    <filter id="dropShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10" result="blur"/>
+      <feOffset in="blur" dx="0" dy="10" result="offsetBlur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.5"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="offsetBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Dark Background Container -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+  
+  <!-- Stack Group -->
+  <g transform="translate(256, 256) scale(1.1)" filter="url(#dropShadow)">
+    
+    <!-- Bottom Chevron -->
+    <g transform="translate(0, 110)">
+        <!-- Left Face -->
+        <path d="M-100 0 L0 50 L0 90 L-100 40 Z" fill="url(#silver-side-dark)" />
+        <!-- Right Face -->
+        <path d="M100 0 L0 50 L0 90 L100 40 Z" fill="url(#silver-side-light)" />
+        <!-- Top Face -->
+        <path d="M-100 0 L0 -50 L100 0 L0 50 Z" fill="url(#silver-face)" />
+        <!-- Inner Cutout (Darker) -->
+        <path d="M-100 0 L0 -50 L100 0 L0 50 Z" fill="#000" opacity="0.1" transform="scale(0.6) translate(0, -10)" /> 
+    </g>
+
+    <!-- Middle Chevron -->
+    <g transform="translate(0, 20)">
+        <!-- Left Face -->
+        <path d="M-100 0 L0 50 L0 90 L-100 40 Z" fill="url(#silver-side-dark)" />
+        <!-- Right Face -->
+        <path d="M100 0 L0 50 L0 90 L100 40 Z" fill="url(#silver-side-light)" />
+        <!-- Top Face -->
+        <path d="M-100 0 L0 -50 L100 0 L0 50 Z" fill="url(#silver-face)" />
+    </g>
+
+    <!-- Top Ring/Square -->
+    <g transform="translate(0, -70)">
+        <!-- Left Side -->
+        <path d="M-100 0 L0 50 L0 90 L-100 40 Z" fill="url(#silver-side-dark)" />
+        <!-- Right Side -->
+        <path d="M100 0 L0 50 L0 90 L100 40 Z" fill="url(#silver-side-light)" />
+        <!-- Top Face (Full) -->
+        <path d="M-100 0 L0 -50 L100 0 L0 50 Z" fill="url(#silver-face)" />
+        
+        <!-- Hole (Dark bg color to simulate hole) -->
+        <path d="M-60 0 L0 -30 L60 0 L0 30 Z" fill="#202222" />
+        <!-- Inner Walls of Hole -->
+        <path d="M-60 0 L0 30 L0 45 L-60 15 Z" fill="#111" opacity="0.6"/>
+        <path d="M60 0 L0 30 L0 45 L60 15 Z" fill="#333" opacity="0.6"/>
+    </g>
+  </g>
+</svg>

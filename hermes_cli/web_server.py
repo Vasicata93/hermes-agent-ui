@@ -1957,6 +1957,86 @@ async def delete_session_endpoint(session_id: str):
 
 
 # ---------------------------------------------------------------------------
+# UI Storage Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/store/{store_name}/{key}")
+async def get_store(store_name: str, key: str):
+    from hermes_state import SessionDB
+    db = SessionDB()
+    try:
+        val = db.get_meta(f"{store_name}:{key}")
+        if val is None:
+            return None
+        try:
+            return json.loads(val)
+        except json.JSONDecodeError:
+            return val
+    finally:
+        db.close()
+
+@app.post("/api/store/{store_name}/{key}")
+async def set_store(store_name: str, key: str, request: Request):
+    from hermes_state import SessionDB
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = (await request.body()).decode("utf-8")
+        
+    db = SessionDB()
+    try:
+        val = json.dumps(payload) if not isinstance(payload, str) else payload
+        db.set_meta(f"{store_name}:{key}", val)
+        return {"ok": True}
+    finally:
+        db.close()
+
+@app.delete("/api/store/{store_name}/{key}")
+async def delete_store(store_name: str, key: str):
+    from hermes_state import SessionDB
+    db = SessionDB()
+    try:
+        db.delete_meta(f"{store_name}:{key}")
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Chat Endpoint
+# ---------------------------------------------------------------------------
+
+class ChatMessageRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    agent_mode: bool = False
+
+@app.post("/api/chat")
+async def chat_endpoint(request: ChatMessageRequest):
+    from run_agent import AIAgent
+    from hermes_cli.config import load_config
+    config = load_config()
+
+    model = config.get("model", "")
+    
+    agent = AIAgent(
+        model=model,
+        api_mode="chat_completions",
+        max_iterations=90 if request.agent_mode else 2,
+        quiet_mode=True,
+        session_id=request.session_id,
+        platform="ui"
+    )
+    
+    response_text = agent.chat(request.message)
+    return {
+        "response": response_text,
+        "session_id": agent.session_id
+    }
+
+
+
+# ---------------------------------------------------------------------------
 # Log viewer endpoint
 # ---------------------------------------------------------------------------
 

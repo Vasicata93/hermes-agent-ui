@@ -1,0 +1,9 @@
+{
+  "name": "hermes agent integration",
+  "description": "A high-fidelity clone of Perplex AI featuring local-first data storage, multi-model support (Gemini, Local LLM), and real-time search grounding.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera",
+    "display-capture"
+  ]
+}

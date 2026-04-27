@@ -1599,6 +1599,12 @@ class SessionDB:
             )
         self._execute_write(_do)
 
+    def delete_meta(self, key: str) -> None:
+        """Delete a key from the state_meta key/value store."""
+        def _do(conn):
+            conn.execute("DELETE FROM state_meta WHERE key = ?", (key,))
+        self._execute_write(_do)
+
     # ── Space reclamation ──
 
     def vacuum(self) -> None:
