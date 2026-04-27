@@ -19,7 +19,7 @@ declare global {
         headers?: Record<string, string>;
       }) => Promise<{ ok: boolean; status: number; data?: any; error?: string }>;
       stream: (args: { endpoint: string; body?: any }) => Promise<{ ok: boolean; error?: string }>;
-      sendMessage: (args: { message: string; sessionId?: string; agentMode?: boolean }) => Promise<any>;
+      sendMessage: (args: { message: string; sessionId?: string; agentMode?: boolean; settings?: any }) => Promise<any>;
       getStatus: () => Promise<any>;
       restartBackend: () => Promise<any>;
       getConfig: () => Promise<any>;
@@ -152,11 +152,11 @@ export class HermesApiClient {
 
   // ===== Hermes-specific convenience methods =====
 
-  static async sendMessage(message: string, sessionId?: string, agentMode?: boolean) {
+  static async sendMessage(message: string, sessionId?: string, agentMode?: boolean, settings?: any) {
     if (isElectron) {
-      return window.hermesAPI!.sendMessage({ message, sessionId, agentMode });
+      return window.hermesAPI!.sendMessage({ message, sessionId, agentMode, settings });
     }
-    return this.post('/api/chat', { message, session_id: sessionId, agent_mode: agentMode });
+    return this.post('/api/chat', { message, session_id: sessionId, agent_mode: agentMode, settings });
   }
 
   static async getStatus() {

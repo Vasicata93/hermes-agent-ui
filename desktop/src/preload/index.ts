@@ -28,7 +28,7 @@ export interface HermesAPI {
   }) => Promise<{ ok: boolean; error?: string }>
 
   stream: (args: { endpoint: string; body?: any }) => Promise<{ ok: boolean; error?: string }>
-  sendMessage: (args: { message: string; sessionId?: string; agentMode?: boolean }) => Promise<any>
+  sendMessage: (args: { message: string; sessionId?: string; agentMode?: boolean; settings?: any }) => Promise<any>
   getStatus: () => Promise<any>
   restartBackend: () => Promise<any>
   getConfig: () => Promise<any>

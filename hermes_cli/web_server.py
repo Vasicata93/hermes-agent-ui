@@ -2025,6 +2025,7 @@ class ChatMessageRequest(BaseModel):
     session_id: Optional[str] = None
     agent_mode: bool = False
     is_long_thinking: bool = False
+    settings: Optional[Dict[str, Any]] = None
 
 class NoteSyncRequest(BaseModel):
     notes: List[Dict[str, Any]]
@@ -2200,9 +2201,32 @@ async def clear_memory():
 async def chat_endpoint(request: ChatMessageRequest):
     from run_agent import AIAgent
     from hermes_cli.config import load_config
+    
+    # Load base config
     config = load_config()
-
-    model = config.get("model", "")
+    
+    # Resolve parameters from request settings or fallback to backend config
+    settings = request.settings or {}
+    
+    # Extract model and provider
+    provider = settings.get("modelProvider", config.get("provider", "gemini"))
+    
+    model = ""
+    api_key = None
+    base_url = None
+    
+    if provider == "gemini":
+        model = settings.get("geminiModelId") or config.get("model", "gemini-1.5-pro")
+        api_key = settings.get("geminiApiKey") or os.getenv("GEMINI_API_KEY")
+    elif provider == "openrouter":
+        model = settings.get("openRouterModelId") or config.get("model", "anthropic/claude-3.5-sonnet")
+        api_key = settings.get("openRouterApiKey") or os.getenv("OPENROUTER_API_KEY")
+    elif provider == "openai":
+        model = settings.get("openAiModelId") or config.get("model", "gpt-4o")
+        api_key = settings.get("openAiApiKey") or os.getenv("OPENAI_API_KEY")
+    elif provider == "local":
+        model = settings.get("activeLocalModelId") or config.get("model", "")
+        base_url = "http://localhost:11434/v1" # Default for local/ollama
     
     # Load Hermes Rules (SOUL.md)
     soul_path = get_hermes_home() / "SOUL.md"
@@ -2213,6 +2237,9 @@ async def chat_endpoint(request: ChatMessageRequest):
     # Initialize Agent with full toolset and Hermes memory
     agent = AIAgent(
         model=model,
+        provider=provider,
+        api_key=api_key,
+        base_url=base_url,
         # Use a higher iteration count for agent mode, 
         # or 2 for chat mode (1 tool call allowed).
         max_iterations=90 if request.agent_mode else 2,
@@ -2221,6 +2248,15 @@ async def chat_endpoint(request: ChatMessageRequest):
         platform="ui",
         ephemeral_system_prompt=system_prompt
     )
+    
+    # Apply UI system instructions if provided
+    ai_profile = settings.get("aiProfile", {})
+    ui_instructions = ai_profile.get("systemInstructions")
+    if ui_instructions:
+        if agent.ephemeral_system_prompt:
+            agent.ephemeral_system_prompt += f"\n\nAdditional User Instructions:\n{ui_instructions}"
+        else:
+            agent.ephemeral_system_prompt = ui_instructions
     
     # Ensure thinking is enabled if requested
     if request.is_long_thinking:

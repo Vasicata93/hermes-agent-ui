@@ -837,7 +837,7 @@ function App() {
     activeNote &&
     noteHistoryRef.current[activeNote.id] &&
     noteHistoryRef.current[activeNote.id].pointer <
-      noteHistoryRef.current[activeNote.id].stack.length - 1;
+    noteHistoryRef.current[activeNote.id].stack.length - 1;
 
   const handleDeleteNote = (id: string) => {
     setNotes((prev) => prev.filter((n) => n.id !== id));
@@ -1038,7 +1038,7 @@ function App() {
     if (!text) return "";
     const prompt = `You are an AI editor. Task: ${instruction}\nOriginal Text: "${text}"\nReturn ONLY the modified text. Do not add quotes, explanations, or markdown fences unless requested.`;
     try {
-      const res = await HermesApiClient.sendMessage(prompt, "temporary-edit-thread", false);
+      const res = await HermesApiClient.sendMessage(prompt, "temporary-edit-thread", false, settings);
       if (!res || !res.response) throw new Error("No response");
       return res.response.trim();
     } catch (e) {
@@ -1052,7 +1052,7 @@ function App() {
     activeSourcesRef.current.forEach((src) => {
       try {
         src.stop();
-      } catch (e) {}
+      } catch (e) { }
     });
     activeSourcesRef.current = [];
     if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
@@ -1150,8 +1150,8 @@ function App() {
             console.warn("TTS is currently migrating to native Hermes.");
             const buffer = null;
             if (!buffer) {
-               if (i === 0) hasError = true;
-               break; 
+              if (i === 0) hasError = true;
+              break;
             }
             if (ttsPlaybackIdRef.current !== playbackId) break;
             bufferQueue.push(buffer);
@@ -1164,7 +1164,7 @@ function App() {
         isFetching = false;
       };
 
-      fetchTask(); 
+      fetchTask();
 
       // Async playback loop - WebAudio precise timeline scheduling
       let hasPlayedFirstChunk = false;
@@ -1177,29 +1177,29 @@ function App() {
         if (bufferQueue.length > 0) {
           hasPlayedFirstChunk = true;
           const buffer = bufferQueue.shift()!;
-          
+
           const source = audioContextRef.current!.createBufferSource();
           source.buffer = buffer;
           source.connect(audioContextRef.current!.destination);
-          
+
           const currentTime = audioContextRef.current!.currentTime;
           if (nextStartTime < currentTime) {
-              nextStartTime = currentTime + 0.05; // 50ms transition buffer if we fell behind
+            nextStartTime = currentTime + 0.05; // 50ms transition buffer if we fell behind
           }
-          
+
           source.start(nextStartTime);
           activeSourcesRef.current.push(source);
           nextStartTime += buffer.duration;
-          
+
           activeSourcesCount++;
           source.onended = () => {
-             activeSourcesCount--;
-             activeSourcesRef.current = activeSourcesRef.current.filter((s) => s !== source);
-             if (activeSourcesCount === 0 && !isFetching && bufferQueue.length === 0) {
-               if (ttsPlaybackIdRef.current === playbackId) {
-                  setIsPlayingAudio(false);
-               }
-             }
+            activeSourcesCount--;
+            activeSourcesRef.current = activeSourcesRef.current.filter((s) => s !== source);
+            if (activeSourcesCount === 0 && !isFetching && bufferQueue.length === 0) {
+              if (ttsPlaybackIdRef.current === playbackId) {
+                setIsPlayingAudio(false);
+              }
+            }
           };
         } else {
           if (hasError && !hasPlayedFirstChunk) break;
@@ -1212,15 +1212,15 @@ function App() {
       // because we must wait for the actual AudioBuffers to finish playing via `onended`.
       // If we fell through due to a stop or native fallback condition:
       if (hasError && !hasPlayedFirstChunk && ttsPlaybackIdRef.current === playbackId) {
-         playNativeFallbackTTS();
+        playNativeFallbackTTS();
       }
 
     } catch (e) {
       console.error("TTS failed", e);
       if (ttsPlaybackIdRef.current === playbackId) {
-         playNativeFallbackTTS();
+        playNativeFallbackTTS();
       } else {
-         setIsPlayingAudio(false);
+        setIsPlayingAudio(false);
       }
     }
   };
@@ -1396,7 +1396,18 @@ function App() {
   };
 
   const handleUpdateSettings = (newSettings: Partial<AppSettings>) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }));
+    setSettings((prev) => {
+      const updated = { ...prev };
+      for (const key in newSettings) {
+        // Dacă valoarea este un obiect (și nu un array), facem merge la primul nivel de adâncime
+        if (newSettings[key] && typeof newSettings[key] === 'object' && !Array.isArray(newSettings[key])) {
+          updated[key] = { ...prev[key], ...newSettings[key] };
+        } else {
+          updated[key] = newSettings[key];
+        }
+      }
+      return updated;
+    });
   };
 
   // --- Interaction Handlers ---
@@ -1625,21 +1636,21 @@ function App() {
       try {
         // Helper to recursively find a value across possible keys in the payload
         const findValue = (obj: any, keys: string[]): any => {
-           if (!obj) return undefined;
-           // Check top level
-           for (const key of keys) {
-             if (obj[key] !== undefined) return obj[key];
-           }
-           // Check common nested objects
-           const nestedKeys = ["asset", "position", "document", "doc", "date"];
-           for (const nested of nestedKeys) {
-             if (obj[nested] && typeof obj[nested] === 'object') {
-               for (const key of keys) {
-                 if (obj[nested][key] !== undefined) return obj[nested][key];
-               }
-             }
-           }
-           return undefined;
+          if (!obj) return undefined;
+          // Check top level
+          for (const key of keys) {
+            if (obj[key] !== undefined) return obj[key];
+          }
+          // Check common nested objects
+          const nestedKeys = ["asset", "position", "document", "doc", "date"];
+          for (const nested of nestedKeys) {
+            if (obj[nested] && typeof obj[nested] === 'object') {
+              for (const key of keys) {
+                if (obj[nested][key] !== undefined) return obj[nested][key];
+              }
+            }
+          }
+          return undefined;
         };
 
         if (module === "safe_digital") {
@@ -1670,31 +1681,31 @@ function App() {
           } else if (action === "update_document") {
             const idToUpdate = findValue(payloadToUse, ["id", "documentId"]);
             if (!idToUpdate) {
-               console.error("Nu s-a gasit ID pentru actualizare document");
+              console.error("Nu s-a gasit ID pentru actualizare document");
             } else {
-               const title = findValue(payloadToUse, ["title", "titlu", "name", "nume", "document"]);
-               const mainCategory = findValue(payloadToUse, ["mainCategory", "categoriePrincipala", "category", "categorie"]);
-               const subCategory = findValue(payloadToUse, ["subCategory", "subCategorie", "subcategory", "subcategorie"]);
-               const fileSize = findValue(payloadToUse, ["fileSize", "dimensiune", "size", "marime"]);
-               const content = findValue(payloadToUse, ["content", "continut", "text", "body", "descriere"]);
-               const expiryDate = findValue(payloadToUse, ["expiryDate", "expirare", "dataExpirare", "valabilitate"]);
+              const title = findValue(payloadToUse, ["title", "titlu", "name", "nume", "document"]);
+              const mainCategory = findValue(payloadToUse, ["mainCategory", "categoriePrincipala", "category", "categorie"]);
+              const subCategory = findValue(payloadToUse, ["subCategory", "subCategorie", "subcategory", "subcategorie"]);
+              const fileSize = findValue(payloadToUse, ["fileSize", "dimensiune", "size", "marime"]);
+              const content = findValue(payloadToUse, ["content", "continut", "text", "body", "descriere"]);
+              const expiryDate = findValue(payloadToUse, ["expiryDate", "expirare", "dataExpirare", "valabilitate"]);
 
-               const updates: any = {};
-               if (title !== undefined) updates.title = title;
-               if (mainCategory !== undefined) updates.mainCategory = mainCategory;
-               if (subCategory !== undefined) updates.subCategory = subCategory;
-               if (fileSize !== undefined) updates.fileSize = fileSize;
-               if (content !== undefined) updates.content = content;
-               if (expiryDate !== undefined) updates.expiryDate = expiryDate;
+              const updates: any = {};
+              if (title !== undefined) updates.title = title;
+              if (mainCategory !== undefined) updates.mainCategory = mainCategory;
+              if (subCategory !== undefined) updates.subCategory = subCategory;
+              if (fileSize !== undefined) updates.fileSize = fileSize;
+              if (content !== undefined) updates.content = content;
+              if (expiryDate !== undefined) updates.expiryDate = expiryDate;
 
-               const newDocs = docs.map((d) => (d.id === idToUpdate ? { ...d, ...updates, id: d.id, ...payloadToUse, ...payloadToUse.document } : d));
-               await safeDigitalService.saveDocuments(newDocs as any);
+              const newDocs = docs.map((d) => (d.id === idToUpdate ? { ...d, ...updates, id: d.id, ...payloadToUse, ...payloadToUse.document } : d));
+              await safeDigitalService.saveDocuments(newDocs as any);
             }
           } else if (action === "delete_document") {
             const idToDelete = findValue(payloadToUse, ["id", "documentId"]);
             if (idToDelete) {
-               const newDocs = docs.filter((d) => d.id !== idToDelete);
-               await safeDigitalService.saveDocuments(newDocs);
+              const newDocs = docs.filter((d) => d.id !== idToDelete);
+              await safeDigitalService.saveDocuments(newDocs);
             }
           }
           window.dispatchEvent(new CustomEvent("safe-digital-updated"));
@@ -1741,15 +1752,15 @@ function App() {
           ) {
             const targetId = payloadToUse.id || data?.id;
             const existingPos = positions.find((p) => p.id === targetId);
-            
+
             if (existingPos) {
-              const newPositions = positions.map((p) => 
+              const newPositions = positions.map((p) =>
                 p.id === targetId ? { ...p, ...positionData, id: p.id, assetId: p.assetId, lastUpdate: Date.now() } : p
               );
-              const newAssets = assets.map((a) => 
+              const newAssets = assets.map((a) =>
                 a.id === existingPos.assetId ? { ...a, ...assetData, id: a.id } : a
               );
-              
+
               await portfolioService.saveAssets(newAssets as any);
               await portfolioService.savePositions(newPositions as any);
             }
@@ -1947,14 +1958,14 @@ function App() {
       prev.map((t) =>
         t.id === threadId
           ? {
-              ...t,
-              messages: [...history, placeholderMsg],
-              updatedAt: Date.now(),
-            }
+            ...t,
+            messages: [...history, placeholderMsg],
+            updatedAt: Date.now(),
+          }
           : t,
       ),
     );
-    
+
     setTimeout(scrollToBottom, 50);
 
     let effectiveUseSearch = settings.useSearch;
@@ -1963,31 +1974,43 @@ function App() {
     let customSystemInstructions = undefined;
 
     try {
-      const res = await HermesApiClient.sendMessage(modifiedPrompt, threadId, isAgentMode);
+      console.log("DEBUG [triggerGeneration]: Trimitere setări către backend (OpenRouter Key):", settings.openRouterApiKey ? "Prezentă" : "LIPSĂ");
+      const res = await HermesApiClient.sendMessage(modifiedPrompt, threadId, isAgentMode, settings);
 
       if (isStoppedRef.current) return;
 
-      if (!res || !res.response) {
-        throw new Error("Empty response from backend");
+      if (!res) {
+        console.error("DEBUG [triggerGeneration]: No response object received from backend.");
+        throw new Error("Backend-ul Hermes nu a returnat niciun răspuns.");
+      }
+
+      if (res.error) {
+        // Afișăm eroarea reală venită de la furnizorul AI (ex: OpenRouter 401)
+        throw new Error(`Eroare Furnizor AI: ${res.error}`);
+      }
+
+      if (!res.response || res.response.trim() === "") {
+        console.warn("DEBUG [triggerGeneration]: Empty response field from backend. Full object:", res);
+        throw new Error("Răspuns gol de la AI. Verifică setările modelului sau creditele.");
       }
 
       setThreads((prev) =>
         prev.map((t) =>
           t.id === threadId
             ? {
-                ...t,
-                id: res.session_id || t.id,
-                messages: t.messages.map((m) =>
-                  m.id === tempBotId
-                    ? {
-                        ...m,
-                        content: res.response,
-                        isThinking: false,
-                      }
-                    : m,
-                ),
-                updatedAt: Date.now(),
-              }
+              ...t,
+              id: res.session_id || t.id,
+              messages: t.messages.map((m) =>
+                m.id === tempBotId
+                  ? {
+                    ...m,
+                    content: res.response,
+                    isThinking: false,
+                  }
+                  : m,
+              ),
+              updatedAt: Date.now(),
+            }
             : t,
         ),
       );
@@ -2001,18 +2024,18 @@ function App() {
         prev.map((t) =>
           t.id === threadId
             ? {
-                ...t,
-                messages: t.messages.map((m) =>
-                  m.id === tempBotId
-                    ? {
-                        ...m,
-                        content: m.content + `\n\nConnection Error: ${e.message}`,
-                        isThinking: false,
-                      }
-                    : m,
-                ),
-                updatedAt: Date.now(),
-              }
+              ...t,
+              messages: t.messages.map((m) =>
+                m.id === tempBotId
+                  ? {
+                    ...m,
+                    content: m.content + `\n\nConnection Error: ${e.message}`,
+                    isThinking: false,
+                  }
+                  : m,
+              ),
+              updatedAt: Date.now(),
+            }
             : t,
         ),
       );
@@ -2049,7 +2072,7 @@ function App() {
 
   const handleAddMessage = (role: Role, content: string, threadIdOverride?: string) => {
     let threadId = threadIdOverride || activeThreadId;
-    
+
     if (!threadId) {
       const newThread: Thread = {
         id: generateId(),
@@ -2076,10 +2099,10 @@ function App() {
       prev.map((t) =>
         t.id === threadId
           ? {
-              ...t,
-              messages: [...t.messages, newMsg],
-              updatedAt: Date.now(),
-            }
+            ...t,
+            messages: [...t.messages, newMsg],
+            updatedAt: Date.now(),
+          }
           : t,
       ),
     );
@@ -2095,12 +2118,12 @@ function App() {
       prev.map((t) =>
         t.id === threadId
           ? {
-              ...t,
-              messages: t.messages.map((m) =>
-                m.id === id ? { ...m, content } : m
-              ),
-              updatedAt: Date.now(),
-            }
+            ...t,
+            messages: t.messages.map((m) =>
+              m.id === id ? { ...m, content } : m
+            ),
+            updatedAt: Date.now(),
+          }
           : t,
       ),
     );
@@ -2178,24 +2201,35 @@ function App() {
       prev.map((t) =>
         t.id === threadId
           ? {
-              ...t,
-              messages: [...t.messages, userMsg, placeholderMsg],
-              updatedAt: Date.now(),
-            }
+            ...t,
+            messages: [...t.messages, userMsg, placeholderMsg],
+            updatedAt: Date.now(),
+          }
           : t,
       ),
     );
-    
+
     setTimeout(scrollToBottom, 50);
 
     try {
       // Use Hermes Backend API for ALL message processing (Chat Mode & Agent Mode)
-      const res = await HermesApiClient.sendMessage(processedText, threadId, isAgentMode);
+      console.log("DEBUG [handleSendMessage]: Trimitere setări către backend (Model):", settings.activeLocalModelId || "Default");
+      const res = await HermesApiClient.sendMessage(processedText, threadId, isAgentMode, settings);
 
       if (isStoppedRef.current) return;
 
-      if (!res || !res.response) {
-        throw new Error("Empty response from backend");
+      if (!res) {
+        console.error("DEBUG [handleSendMessage]: No response object received from backend.");
+        throw new Error("Backend-ul nu a putut fi contactat.");
+      }
+
+      if (res.error) {
+        throw new Error(`Eroare: ${res.error}`);
+      }
+
+      if (!res.response || res.response.trim() === "") {
+        console.warn("DEBUG [handleSendMessage]: Empty response field from backend. Full object:", res);
+        throw new Error("Răspuns gol de la AI. Verifică dacă cheia OpenRouter are credite.");
       }
 
       const finalText = res.response;
@@ -2209,21 +2243,21 @@ function App() {
         prev.map((t) =>
           t.id === threadId
             ? {
-                ...t,
-                // Optional: Update the ID to the one Hermes returned, if Hermes created a new one
-                id: returnedSessionId || t.id,
-                messages: t.messages.map((m) =>
-                  m.id === tempBotId
-                    ? {
-                        ...m,
-                        content: finalText,
-                        isThinking: false,
-                        // Agent mode might return actions/plans eventually, but for now we just show text
-                      }
-                    : m,
-                ),
-                updatedAt: Date.now(),
-              }
+              ...t,
+              // Optional: Update the ID to the one Hermes returned, if Hermes created a new one
+              id: returnedSessionId || t.id,
+              messages: t.messages.map((m) =>
+                m.id === tempBotId
+                  ? {
+                    ...m,
+                    content: finalText,
+                    isThinking: false,
+                    // Agent mode might return actions/plans eventually, but for now we just show text
+                  }
+                  : m,
+              ),
+              updatedAt: Date.now(),
+            }
             : t,
         ),
       );
@@ -2245,12 +2279,12 @@ function App() {
           prev.map((t) =>
             t.id === threadId
               ? {
-                  ...t,
-                  messages: t.messages.map((m) =>
-                    m.id === tempBotId ? { ...m, isThinking: false } : m
-                  ),
-                  updatedAt: Date.now(),
-                }
+                ...t,
+                messages: t.messages.map((m) =>
+                  m.id === tempBotId ? { ...m, isThinking: false } : m
+                ),
+                updatedAt: Date.now(),
+              }
               : t,
           ),
         );
@@ -2259,18 +2293,18 @@ function App() {
           prev.map((t) =>
             t.id === threadId
               ? {
-                  ...t,
-                  messages: t.messages.map((m) =>
-                    m.id === tempBotId
-                      ? {
-                          ...m,
-                          content: m.content + `\n\nConnection Error: ${e.message}`,
-                          isThinking: false,
-                        }
-                      : m,
-                  ),
-                  updatedAt: Date.now(),
-                }
+                ...t,
+                messages: t.messages.map((m) =>
+                  m.id === tempBotId
+                    ? {
+                      ...m,
+                      content: m.content + `\n\nConnection Error: ${e.message}`,
+                      isThinking: false,
+                    }
+                    : m,
+                ),
+                updatedAt: Date.now(),
+              }
               : t,
           ),
         );
@@ -2378,11 +2412,11 @@ function App() {
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <Toaster 
-        position="top-right" 
-        toastOptions={{ 
-          className: 'bg-white dark:bg-pplx-card text-black dark:text-pplx-text border border-pplx-border' 
-        }} 
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          className: 'bg-white dark:bg-pplx-card text-black dark:text-pplx-text border border-pplx-border'
+        }}
       />
       <Sidebar
         isOpen={sidebarOpen}
@@ -2451,8 +2485,8 @@ function App() {
               : "0px",
         }}
       >
-        <DesktopMenuBar 
-          activeView={activeView} 
+        <DesktopMenuBar
+          activeView={activeView}
           sidebarOpen={sidebarOpen}
           onToggleSidebar={handleOpenSidebar}
           searchQuery={globalSearchQuery}
@@ -2463,7 +2497,7 @@ function App() {
             }
             pushToHistory();
             setActiveView(view as any);
-          }} 
+          }}
         />
         {/* Premium Dark Background Effect for Home Page */}
         {!activeThreadId && viewToRender === "chat" && (
@@ -2866,7 +2900,7 @@ function App() {
                 </div>
 
                 <div className="hidden md:hidden sm:flex md:pointer-events-none pointer-events-auto">
-                   {/* Optional: Add spacing or render if screen is big enough, 
+                  {/* Optional: Add spacing or render if screen is big enough, 
                        but MobileHomeActions might wrap Profile if screen is too small, 
                        so it's better placed below or wrapped properly */}
                 </div>
@@ -2884,8 +2918,8 @@ function App() {
                 )}
 
                 <div className="ml-auto pointer-events-auto">
-                  <MobileHomeActions 
-                    activeView={viewToRender} 
+                  <MobileHomeActions
+                    activeView={viewToRender}
                     setActiveView={(view) => {
                       if (view === "search" && activeView !== "search") {
                         setPreviousViewBeforeSearch(activeView);
@@ -2990,17 +3024,17 @@ function App() {
           </div>
         ) : viewToRender === "calendar" ? (
           <div className="flex-1 overflow-hidden bg-pplx-primary md:pt-10 relative">
-             <div className="absolute top-0 left-0 right-0 z-50 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none">
-               {!sidebarOpen && (
-                 <>
-                   <SidebarToggle
-                     onClick={handleOpenSidebar}
-                     className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden"
-                     size={36}
-                   />
-                 </>
-               )}
-             </div>
+            <div className="absolute top-0 left-0 right-0 z-50 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none">
+              {!sidebarOpen && (
+                <>
+                  <SidebarToggle
+                    onClick={handleOpenSidebar}
+                    className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden"
+                    size={36}
+                  />
+                </>
+              )}
+            </div>
             <CalendarView
               events={events}
               onAddEvent={handleAddEvent}
@@ -3014,57 +3048,57 @@ function App() {
           </div>
         ) : viewToRender === "dashboard" ? (
           <div className="flex-1 overflow-y-auto bg-pplx-primary custom-scrollbar pt-12 md:pt-10 relative">
-             <div className="absolute top-0 left-0 right-0 z-20 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none md:hidden">
-               {!sidebarOpen && (
-                 <>
-                   <SidebarToggle
-                     onClick={handleOpenSidebar}
-                     className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden"
-                     size={36}
-                   />
-                 </>
-               )}
-             </div>
-             <DashboardView onClose={() => setActiveView("chat")} />
+            <div className="absolute top-0 left-0 right-0 z-20 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none md:hidden">
+              {!sidebarOpen && (
+                <>
+                  <SidebarToggle
+                    onClick={handleOpenSidebar}
+                    className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden"
+                    size={36}
+                  />
+                </>
+              )}
+            </div>
+            <DashboardView onClose={() => setActiveView("chat")} />
           </div>
         ) : viewToRender === "tasks" ? (
           <div className="flex-1 overflow-y-auto bg-pplx-primary custom-scrollbar pt-12 md:pt-10 relative">
-             <div className="absolute top-0 left-0 right-0 z-20 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none md:hidden">
-               {!sidebarOpen && (
-                 <>
-                   <SidebarToggle
-                     onClick={handleOpenSidebar}
-                     className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden"
-                     size={36}
-                   />
-                 </>
-               )}
-             </div>
-             <TasksView />
+            <div className="absolute top-0 left-0 right-0 z-20 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none md:hidden">
+              {!sidebarOpen && (
+                <>
+                  <SidebarToggle
+                    onClick={handleOpenSidebar}
+                    className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden"
+                    size={36}
+                  />
+                </>
+              )}
+            </div>
+            <TasksView />
           </div>
         ) : viewToRender === "trash" ? (
           <div className="flex-1 overflow-y-auto bg-pplx-primary custom-scrollbar pt-12 md:pt-10 relative">
-             <div className="absolute top-0 left-0 right-0 z-20 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none md:hidden">
-               {!sidebarOpen && (
-                 <>
-                   <SidebarToggle
-                     onClick={handleOpenSidebar}
-                     className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden"
-                     size={36}
-                   />
-                 </>
-               )}
-             </div>
-             <TrashView />
+            <div className="absolute top-0 left-0 right-0 z-20 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none md:hidden">
+              {!sidebarOpen && (
+                <>
+                  <SidebarToggle
+                    onClick={handleOpenSidebar}
+                    className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden"
+                    size={36}
+                  />
+                </>
+              )}
+            </div>
+            <TrashView />
           </div>
         ) : viewToRender === "agent" ? (
           <div className="flex-1 overflow-y-auto bg-pplx-primary custom-scrollbar pt-12 md:pt-10 relative">
-             <div className="absolute top-0 left-0 right-0 z-20 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none md:hidden">
-               {!sidebarOpen && (
-                 <SidebarToggle onClick={handleOpenSidebar} className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden" size={36} />
-               )}
-             </div>
-             <AgentControlView />
+            <div className="absolute top-0 left-0 right-0 z-20 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none md:hidden">
+              {!sidebarOpen && (
+                <SidebarToggle onClick={handleOpenSidebar} className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden" size={36} />
+              )}
+            </div>
+            <AgentControlView />
           </div>
         ) : (
           <>
@@ -3194,10 +3228,10 @@ function App() {
                                 {threads.filter(
                                   (t) => t.spaceId === activeSpace.id,
                                 ).length === 0 && (
-                                  <div className="py-8 text-pplx-muted text-sm italic">
-                                    No recent activity. Start a new chat below.
-                                  </div>
-                                )}
+                                    <div className="py-8 text-pplx-muted text-sm italic">
+                                      No recent activity. Start a new chat below.
+                                    </div>
+                                  )}
                               </div>
                             </div>
                           </div>
@@ -3290,396 +3324,395 @@ function App() {
                   )}
                 </div>
               ) : // ... existing active thread view ...
-              isDashboardMode ? (
-                <div className="fixed inset-0 z-[100] bg-white dark:bg-gray-900 overflow-y-auto animate-fadeIn">
-                  <DashboardView onClose={() => setIsDashboardMode(false)} />
-                </div>
-              ) : (
-                <div className="max-w-3xl mx-auto w-full py-4 space-y-6 px-4 md:px-0 mt-4 md:mt-0 relative z-0 bg-pplx-secondary/5 rounded-2xl">
-                  {activeThread.messages.map((msg) => (
-                    // ... existing message mapping ...
-                    <div
-                      key={msg.id}
-                      data-message-id={msg.id}
-                      className="flex flex-col space-y-3 animate-fadeIn"
-                    >
-                      {/* Message Row Alignment: Left for Model, Right for User */}
-                      {/* UPDATED: Mobile uses flex-col for Model to put Avatar on top */}
+                isDashboardMode ? (
+                  <div className="fixed inset-0 z-[100] bg-white dark:bg-gray-900 overflow-y-auto animate-fadeIn">
+                    <DashboardView onClose={() => setIsDashboardMode(false)} />
+                  </div>
+                ) : (
+                  <div className="max-w-3xl mx-auto w-full py-4 space-y-6 px-4 md:px-0 mt-4 md:mt-0 relative z-0 bg-pplx-secondary/5 rounded-2xl">
+                    {activeThread.messages.map((msg) => (
+                      // ... existing message mapping ...
                       <div
-                        className={`flex ${msg.role === Role.USER ? "justify-end" : "justify-start flex-col"} w-full group items-start`}
+                        key={msg.id}
+                        data-message-id={msg.id}
+                        className="flex flex-col space-y-3 animate-fadeIn"
                       >
-                        {/* Header Row for Model: Avatar + Status Text */}
-                        {msg.role === Role.MODEL && (
-                          <div className="flex items-center gap-3 mb-2 select-none">
-                            {/* Avatar/Icon */}
-                            <div className="w-8 h-8 rounded-full bg-pplx-accent/10 flex items-center justify-center border border-transparent shrink-0">
-                              <PerplexityLogo
-                                className={`w-5 h-5 text-pplx-accent ${msg.isThinking ? "animate-spin-y" : ""}`}
-                              />
-                            </div>
+                        {/* Message Row Alignment: Left for Model, Right for User */}
+                        {/* UPDATED: Mobile uses flex-col for Model to put Avatar on top */}
+                        <div
+                          className={`flex ${msg.role === Role.USER ? "justify-end" : "justify-start flex-col"} w-full group items-start`}
+                        >
+                          {/* Header Row for Model: Avatar + Status Text */}
+                          {msg.role === Role.MODEL && (
+                            <div className="flex items-center gap-3 mb-2 select-none">
+                              {/* Avatar/Icon */}
+                              <div className="w-8 h-8 rounded-full bg-pplx-accent/10 flex items-center justify-center border border-transparent shrink-0">
+                                <PerplexityLogo
+                                  className={`w-5 h-5 text-pplx-accent ${msg.isThinking ? "animate-spin-y" : ""}`}
+                                />
+                              </div>
 
-                            {/* Reasoning Indicator (Now to the right of avatar) */}
-                            <TornadoIndicator
-                              isThinking={!!msg.isThinking}
-                              reasoning={msg.reasoning}
-                              currentStep={
-                                msg.reasoning
-                                  ? msg.reasoning
+                              {/* Reasoning Indicator (Now to the right of avatar) */}
+                              <TornadoIndicator
+                                isThinking={!!msg.isThinking}
+                                reasoning={msg.reasoning}
+                                currentStep={
+                                  msg.reasoning
+                                    ? msg.reasoning
                                       .split("\n")
                                       .filter(Boolean)
                                       .pop()
-                                  : undefined
-                              }
-                              agentPlan={msg.agentPlan}
-                              agentActions={msg.agentActions}
-                            />
-
-                            {/* Message Actions */}
-                            {!msg.isThinking && (
-                              <ModelMessageActions
-                                onTTS={() => {
-                                  if (isPlayingAudio && focusedMessageId === msg.id) {
-                                    handleTTS(""); // Stop audio explicitly
-                                  } else {
-                                    setFocusedMessageId(msg.id);
-                                    handleTTS(msg.content);
-                                  }
-                                }}
-                                isPlayingAudio={isPlayingAudio && focusedMessageId === msg.id}
-                                onDashboard={() => {
-                                  setFocusedMessageId(msg.id);
-                                  setIsDashboardMode(true);
-                                }}
-                                onCopy={() => handleCopyText(msg.id, msg.content)}
-                                onShare={() => handleShare(msg.content)}
-                                onSave={() => setActiveAddToSpaceId(msg.id)}
+                                    : undefined
+                                }
+                                agentPlan={msg.agentPlan}
+                                agentActions={msg.agentActions}
                               />
-                            )}
-                          </div>
-                        )}
 
-                        {/* Content Container */}
-                        <div
-                          className={`flex flex-col min-w-0 ${msg.role === Role.USER ? "items-end max-w-[85%] md:max-w-[75%]" : "items-start w-full md:max-w-[100%]"} group`}
-                        >
-                          {/* USER HEADER (The "You" label) - Added Edit/Copy Actions on Hover */}
-                          {msg.role === Role.USER && (
-                            <div className="flex items-center gap-2 mb-2 mr-1 opacity-100 transition-opacity justify-end w-full group">
-                              {/* Action Buttons (Visible on hover) */}
-                              <div
-                                className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mr-2 ${editingMessageId === msg.id ? "opacity-100" : ""}`}
-                              >
-                                <button
-                                  onClick={() => {
-                                    setEditingMessageId(msg.id);
-                                    setEditValue(msg.content);
+                              {/* Message Actions */}
+                              {!msg.isThinking && (
+                                <ModelMessageActions
+                                  onTTS={() => {
+                                    if (isPlayingAudio && focusedMessageId === msg.id) {
+                                      handleTTS(""); // Stop audio explicitly
+                                    } else {
+                                      setFocusedMessageId(msg.id);
+                                      handleTTS(msg.content);
+                                    }
                                   }}
-                                  className="p-1.5 text-pplx-muted hover:text-pplx-text rounded hover:bg-pplx-hover transition-colors"
-                                  title="Edit"
+                                  isPlayingAudio={isPlayingAudio && focusedMessageId === msg.id}
+                                  onDashboard={() => {
+                                    setFocusedMessageId(msg.id);
+                                    setIsDashboardMode(true);
+                                  }}
+                                  onCopy={() => handleCopyText(msg.id, msg.content)}
+                                  onShare={() => handleShare(msg.content)}
+                                  onSave={() => setActiveAddToSpaceId(msg.id)}
+                                />
+                              )}
+                            </div>
+                          )}
+
+                          {/* Content Container */}
+                          <div
+                            className={`flex flex-col min-w-0 ${msg.role === Role.USER ? "items-end max-w-[85%] md:max-w-[75%]" : "items-start w-full md:max-w-[100%]"} group`}
+                          >
+                            {/* USER HEADER (The "You" label) - Added Edit/Copy Actions on Hover */}
+                            {msg.role === Role.USER && (
+                              <div className="flex items-center gap-2 mb-2 mr-1 opacity-100 transition-opacity justify-end w-full group">
+                                {/* Action Buttons (Visible on hover) */}
+                                <div
+                                  className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mr-2 ${editingMessageId === msg.id ? "opacity-100" : ""}`}
                                 >
-                                  <Pencil size={12} />
+                                  <button
+                                    onClick={() => {
+                                      setEditingMessageId(msg.id);
+                                      setEditValue(msg.content);
+                                    }}
+                                    className="p-1.5 text-pplx-muted hover:text-pplx-text rounded hover:bg-pplx-hover transition-colors"
+                                    title="Edit"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleCopyText(msg.id, msg.content)
+                                    }
+                                    className="p-1.5 text-pplx-muted hover:text-pplx-text rounded hover:bg-pplx-hover transition-colors relative"
+                                    title="Copy"
+                                  >
+                                    {copiedId === msg.id ? (
+                                      <Check
+                                        size={12}
+                                        className="text-green-400"
+                                      />
+                                    ) : (
+                                      <Copy size={12} />
+                                    )}
+                                  </button>
+                                </div>
+
+                                <span className="text-xs font-semibold text-pplx-text/70 uppercase tracking-widest">
+                                  You
+                                </span>
+                                <div className="w-6 h-6 rounded-full bg-pplx-secondary border border-pplx-border flex items-center justify-center">
+                                  <User size={12} className="text-pplx-text/70" />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Attachments */}
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <div
+                                className={`mt-2 mb-2 grid grid-cols-2 sm:grid-cols-3 gap-3 ${msg.role === Role.USER ? "justify-items-end" : ""}`}
+                              >
+                                {msg.attachments.map((att, i) => (
+                                  <div
+                                    key={i}
+                                    className="group relative aspect-square rounded-xl border border-pplx-border overflow-hidden bg-pplx-secondary hover:border-pplx-muted transition-colors w-24 h-24"
+                                  >
+                                    {att.type === "image" ? (
+                                      <img
+                                        src={att.content}
+                                        alt="attachment"
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center">
+                                        {" "}
+                                        <FileText
+                                          className="text-pplx-muted mb-2 group-hover:text-pplx-text transition-colors"
+                                          size={24}
+                                        />{" "}
+                                        <span className="text-xs text-pplx-text leading-tight line-clamp-2 w-full break-words">
+                                          {att.name}
+                                        </span>{" "}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Text Content Bubble OR Edit Mode */}
+                            {editingMessageId === msg.id ? (
+                              <div className="w-full bg-pplx-secondary border border-pplx-border rounded-2xl p-4 mt-1 animate-fadeIn">
+                                <textarea
+                                  value={editValue}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  className="w-full bg-transparent text-pplx-text outline-none resize-none text-[16px] leading-7 font-sans min-h-[80px]"
+                                  autoFocus
+                                />
+                                <div className="flex justify-end gap-2 mt-2">
+                                  <button
+                                    onClick={() => setEditingMessageId(null)}
+                                    className="px-3 py-1.5 text-xs font-medium text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover rounded-lg transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleEditUserMessage(msg.id, editValue)
+                                    }
+                                    className="px-4 py-1.5 text-xs font-bold text-white bg-pplx-accent hover:opacity-90 rounded-lg transition-colors"
+                                  >
+                                    Save & Submit
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div
+                                className={`font-normal leading-7 transition-all relative ${msg.role === Role.USER
+                                  ? "text-[13px] bg-pplx-card px-4 py-3 rounded-3xl rounded-tr-sm text-pplx-text text-right whitespace-pre-wrap shadow-md backdrop-blur-md"
+                                  : "text-[16px] w-full text-pplx-text"
+                                  }`}
+                              >
+                                {msg.role === Role.USER ? (
+                                  msg.content
+                                ) : (
+                                  <MessageRenderer content={msg.content} />
+                                )}
+                              </div>
+                            )}
+
+                            {/* Sources - MODIFIED: Hidden behind a toggle button */}
+                            {msg.role === Role.MODEL &&
+                              msg.citations &&
+                              msg.citations.length > 0 &&
+                              expandedCitations[msg.id] && (
+                                <div className="mt-2 w-full pt-2">
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                    {msg.citations.map((cit, idx) => (
+                                      <a
+                                        key={idx}
+                                        href={cit.uri}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="flex items-center gap-1.5 px-1.5 py-1 bg-pplx-card hover:bg-pplx-hover border border-pplx-border/50 hover:border-pplx-muted/50 rounded-md transition-all group overflow-hidden"
+                                      >
+                                        <div className="bg-pplx-secondary p-0.5 rounded-full shrink-0">
+                                          {" "}
+                                          <Globe
+                                            size={8}
+                                            className="text-pplx-muted"
+                                          />{" "}
+                                        </div>
+                                        <div className="flex flex-col overflow-hidden min-w-0">
+                                          <span className="text-[9px] font-medium text-pplx-text truncate leading-none group-hover:text-pplx-accent transition-colors">
+                                            {cit.title}
+                                          </span>
+                                          <span className="text-[8px] text-pplx-muted truncate leading-none opacity-70 mt-0.5">
+                                            {new URL(cit.uri).hostname}
+                                          </span>
+                                        </div>
+                                      </a>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                            {/* AI FOOTER ACTIONS (Regenerate, Copy, Share, Add to Workspace) */}
+                            {msg.role === Role.MODEL && !msg.isThinking && (
+                              // UPDATED: Added flex-nowrap and mobile optimizations for button layout
+                              <div className="flex items-center justify-between md:justify-start gap-1 md:gap-2 mt-4 border-t border-pplx-border/30 pt-2 w-full flex-nowrap overflow-x-auto no-scrollbar">
+                                {msg.citations && msg.citations.length > 0 && (
+                                  <button
+                                    onClick={() => toggleCitations(msg.id)}
+                                    className={`flex items-center justify-center gap-1.5 px-2 md:px-2.5 py-1.5 text-xs transition-colors flex-1 md:flex-none rounded-lg border ${expandedCitations[msg.id] ? "bg-pplx-accent/10 border-pplx-accent/30 text-pplx-accent" : "text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover border-transparent"}`}
+                                    title="Show Sources"
+                                  >
+                                    <BookOpen
+                                      size={13}
+                                      className={`shrink-0 ${expandedCitations[msg.id] ? "text-pplx-accent" : ""}`}
+                                    />
+                                    <span className="font-bold text-[10px] md:text-xs truncate uppercase tracking-tight">
+                                      Surse
+                                    </span>
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={() => handleRegenerate(msg.id)}
+                                  className="flex items-center justify-center gap-1.5 px-2 md:px-2.5 py-1.5 text-xs text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover rounded-lg transition-colors flex-1 md:flex-none"
+                                  title="Regenerate Answer"
+                                >
+                                  <RefreshCw size={13} className="shrink-0" />
+                                  <span className="font-medium text-[10px] md:text-xs truncate">
+                                    Rewrite
+                                  </span>
                                 </button>
+
                                 <button
                                   onClick={() =>
                                     handleCopyText(msg.id, msg.content)
                                   }
-                                  className="p-1.5 text-pplx-muted hover:text-pplx-text rounded hover:bg-pplx-hover transition-colors relative"
-                                  title="Copy"
+                                  className="flex items-center justify-center gap-1.5 px-2 md:px-2.5 py-1.5 text-xs text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover rounded-lg transition-colors relative flex-1 md:flex-none"
+                                  title="Copy Response"
                                 >
                                   {copiedId === msg.id ? (
                                     <Check
-                                      size={12}
-                                      className="text-green-400"
+                                      size={13}
+                                      className="text-green-400 shrink-0"
                                     />
                                   ) : (
-                                    <Copy size={12} />
+                                    <Copy size={13} className="shrink-0" />
                                   )}
+                                  <span className="font-medium text-[10px] md:text-xs truncate">
+                                    Copy
+                                  </span>
                                 </button>
-                              </div>
 
-                              <span className="text-xs font-semibold text-pplx-text/70 uppercase tracking-widest">
-                                You
-                              </span>
-                              <div className="w-6 h-6 rounded-full bg-pplx-secondary border border-pplx-border flex items-center justify-center">
-                                <User size={12} className="text-pplx-text/70" />
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Attachments */}
-                          {msg.attachments && msg.attachments.length > 0 && (
-                            <div
-                              className={`mt-2 mb-2 grid grid-cols-2 sm:grid-cols-3 gap-3 ${msg.role === Role.USER ? "justify-items-end" : ""}`}
-                            >
-                              {msg.attachments.map((att, i) => (
-                                <div
-                                  key={i}
-                                  className="group relative aspect-square rounded-xl border border-pplx-border overflow-hidden bg-pplx-secondary hover:border-pplx-muted transition-colors w-24 h-24"
+                                <button
+                                  onClick={() => handleShare(msg.content)}
+                                  className="flex items-center justify-center gap-1.5 px-2 md:px-2.5 py-1.5 text-xs text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover rounded-lg transition-colors flex-1 md:flex-none"
+                                  title="Share"
                                 >
-                                  {att.type === "image" ? (
-                                    <img
-                                      src={att.content}
-                                      alt="attachment"
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : (
-                                    <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center">
-                                      {" "}
-                                      <FileText
-                                        className="text-pplx-muted mb-2 group-hover:text-pplx-text transition-colors"
-                                        size={24}
-                                      />{" "}
-                                      <span className="text-xs text-pplx-text leading-tight line-clamp-2 w-full break-words">
-                                        {att.name}
-                                      </span>{" "}
+                                  <Share2 size={13} className="shrink-0" />
+                                  <span className="font-medium text-[10px] md:text-xs truncate">
+                                    Share
+                                  </span>
+                                </button>
+
+                                <div className="relative flex-1 md:flex-none">
+                                  <button
+                                    onClick={() =>
+                                      setActiveAddToSpaceId(
+                                        activeAddToSpaceId === msg.id
+                                          ? null
+                                          : msg.id,
+                                      )
+                                    }
+                                    className={`flex items-center justify-center gap-1.5 px-2 md:px-2.5 py-1.5 text-xs rounded-lg transition-colors w-full md:w-auto ${activeAddToSpaceId === msg.id ? "bg-pplx-hover text-pplx-text" : "text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover"}`}
+                                    title="Add to Workspace"
+                                  >
+                                    <FolderPlus size={13} className="shrink-0" />
+                                    <div className="flex flex-col items-start leading-[9px] md:flex-row md:items-center md:gap-1 md:leading-normal text-left">
+                                      <span className="font-medium text-[9px] md:text-xs whitespace-nowrap">
+                                        Add to
+                                      </span>
+                                      <span className="font-medium text-[9px] md:text-xs whitespace-nowrap">
+                                        Workspace
+                                      </span>
                                     </div>
+                                  </button>
+
+                                  {/* Workspace Picker Popup */}
+                                  {activeAddToSpaceId === msg.id && (
+                                    <>
+                                      <div
+                                        className="fixed inset-0 z-30"
+                                        onClick={() =>
+                                          setActiveAddToSpaceId(null)
+                                        }
+                                      />
+                                      <div className="absolute bottom-full right-0 mb-2 w-56 bg-pplx-card border border-pplx-border rounded-xl shadow-xl z-40 p-1 animate-in slide-in-from-bottom-2 fade-in duration-150 origin-bottom-right">
+                                        <div className="px-3 py-2 text-[10px] font-bold text-pplx-muted uppercase tracking-wider">
+                                          Select Space
+                                        </div>
+                                        <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                                          {spaces.length === 0 && (
+                                            <div className="px-3 py-2 text-xs text-pplx-muted italic">
+                                              No spaces created yet.
+                                            </div>
+                                          )}
+                                          {spaces.map((space) => (
+                                            <button
+                                              key={space.id}
+                                              onClick={() =>
+                                                handleAddToSpace(
+                                                  space.id,
+                                                  msg.content,
+                                                )
+                                              }
+                                              className="w-full text-left px-3 py-2 text-xs text-pplx-text hover:bg-pplx-hover rounded-lg flex items-center gap-2 truncate"
+                                            >
+                                              <span>{space.emoji}</span>
+                                              <span className="truncate">
+                                                {space.title}
+                                              </span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </>
                                   )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Text Content Bubble OR Edit Mode */}
-                          {editingMessageId === msg.id ? (
-                            <div className="w-full bg-pplx-secondary border border-pplx-border rounded-2xl p-4 mt-1 animate-fadeIn">
-                              <textarea
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                className="w-full bg-transparent text-pplx-text outline-none resize-none text-[16px] leading-7 font-sans min-h-[80px]"
-                                autoFocus
-                              />
-                              <div className="flex justify-end gap-2 mt-2">
-                                <button
-                                  onClick={() => setEditingMessageId(null)}
-                                  className="px-3 py-1.5 text-xs font-medium text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover rounded-lg transition-colors"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleEditUserMessage(msg.id, editValue)
-                                  }
-                                  className="px-4 py-1.5 text-xs font-bold text-white bg-pplx-accent hover:opacity-90 rounded-lg transition-colors"
-                                >
-                                  Save & Submit
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div
-                              className={`font-normal leading-7 transition-all relative ${
-                                msg.role === Role.USER
-                                  ? "text-[13px] bg-pplx-card px-4 py-3 rounded-3xl rounded-tr-sm text-pplx-text text-right whitespace-pre-wrap shadow-md backdrop-blur-md"
-                                  : "text-[16px] w-full text-pplx-text"
-                              }`}
-                            >
-                              {msg.role === Role.USER ? (
-                                msg.content
-                              ) : (
-                                <MessageRenderer content={msg.content} />
-                              )}
-                            </div>
-                          )}
-
-                          {/* Sources - MODIFIED: Hidden behind a toggle button */}
-                          {msg.role === Role.MODEL &&
-                            msg.citations &&
-                            msg.citations.length > 0 &&
-                            expandedCitations[msg.id] && (
-                              <div className="mt-2 w-full pt-2">
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                                  {msg.citations.map((cit, idx) => (
-                                    <a
-                                      key={idx}
-                                      href={cit.uri}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="flex items-center gap-1.5 px-1.5 py-1 bg-pplx-card hover:bg-pplx-hover border border-pplx-border/50 hover:border-pplx-muted/50 rounded-md transition-all group overflow-hidden"
-                                    >
-                                      <div className="bg-pplx-secondary p-0.5 rounded-full shrink-0">
-                                        {" "}
-                                        <Globe
-                                          size={8}
-                                          className="text-pplx-muted"
-                                        />{" "}
-                                      </div>
-                                      <div className="flex flex-col overflow-hidden min-w-0">
-                                        <span className="text-[9px] font-medium text-pplx-text truncate leading-none group-hover:text-pplx-accent transition-colors">
-                                          {cit.title}
-                                        </span>
-                                        <span className="text-[8px] text-pplx-muted truncate leading-none opacity-70 mt-0.5">
-                                          {new URL(cit.uri).hostname}
-                                        </span>
-                                      </div>
-                                    </a>
-                                  ))}
                                 </div>
                               </div>
                             )}
 
-                          {/* AI FOOTER ACTIONS (Regenerate, Copy, Share, Add to Workspace) */}
-                          {msg.role === Role.MODEL && !msg.isThinking && (
-                            // UPDATED: Added flex-nowrap and mobile optimizations for button layout
-                            <div className="flex items-center justify-between md:justify-start gap-1 md:gap-2 mt-4 border-t border-pplx-border/30 pt-2 w-full flex-nowrap overflow-x-auto no-scrollbar">
-                              {msg.citations && msg.citations.length > 0 && (
-                                <button
-                                  onClick={() => toggleCitations(msg.id)}
-                                  className={`flex items-center justify-center gap-1.5 px-2 md:px-2.5 py-1.5 text-xs transition-colors flex-1 md:flex-none rounded-lg border ${expandedCitations[msg.id] ? "bg-pplx-accent/10 border-pplx-accent/30 text-pplx-accent" : "text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover border-transparent"}`}
-                                  title="Show Sources"
-                                >
-                                  <BookOpen
-                                    size={13}
-                                    className={`shrink-0 ${expandedCitations[msg.id] ? "text-pplx-accent" : ""}`}
-                                  />
-                                  <span className="font-bold text-[10px] md:text-xs truncate uppercase tracking-tight">
-                                    Surse
-                                  </span>
-                                </button>
-                              )}
-
-                              <button
-                                onClick={() => handleRegenerate(msg.id)}
-                                className="flex items-center justify-center gap-1.5 px-2 md:px-2.5 py-1.5 text-xs text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover rounded-lg transition-colors flex-1 md:flex-none"
-                                title="Regenerate Answer"
-                              >
-                                <RefreshCw size={13} className="shrink-0" />
-                                <span className="font-medium text-[10px] md:text-xs truncate">
-                                  Rewrite
-                                </span>
-                              </button>
-
-                              <button
-                                onClick={() =>
-                                  handleCopyText(msg.id, msg.content)
-                                }
-                                className="flex items-center justify-center gap-1.5 px-2 md:px-2.5 py-1.5 text-xs text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover rounded-lg transition-colors relative flex-1 md:flex-none"
-                                title="Copy Response"
-                              >
-                                {copiedId === msg.id ? (
-                                  <Check
-                                    size={13}
-                                    className="text-green-400 shrink-0"
-                                  />
-                                ) : (
-                                  <Copy size={13} className="shrink-0" />
-                                )}
-                                <span className="font-medium text-[10px] md:text-xs truncate">
-                                  Copy
-                                </span>
-                              </button>
-
-                              <button
-                                onClick={() => handleShare(msg.content)}
-                                className="flex items-center justify-center gap-1.5 px-2 md:px-2.5 py-1.5 text-xs text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover rounded-lg transition-colors flex-1 md:flex-none"
-                                title="Share"
-                              >
-                                <Share2 size={13} className="shrink-0" />
-                                <span className="font-medium text-[10px] md:text-xs truncate">
-                                  Share
-                                </span>
-                              </button>
-
-                              <div className="relative flex-1 md:flex-none">
-                                <button
-                                  onClick={() =>
-                                    setActiveAddToSpaceId(
-                                      activeAddToSpaceId === msg.id
-                                        ? null
-                                        : msg.id,
-                                    )
-                                  }
-                                  className={`flex items-center justify-center gap-1.5 px-2 md:px-2.5 py-1.5 text-xs rounded-lg transition-colors w-full md:w-auto ${activeAddToSpaceId === msg.id ? "bg-pplx-hover text-pplx-text" : "text-pplx-muted hover:text-pplx-text hover:bg-pplx-hover"}`}
-                                  title="Add to Workspace"
-                                >
-                                  <FolderPlus size={13} className="shrink-0" />
-                                  <div className="flex flex-col items-start leading-[9px] md:flex-row md:items-center md:gap-1 md:leading-normal text-left">
-                                    <span className="font-medium text-[9px] md:text-xs whitespace-nowrap">
-                                      Add to
+                            {/* Compact Related Questions - Clickable Text */}
+                            {msg.role === Role.MODEL &&
+                              msg.relatedQuestions &&
+                              msg.relatedQuestions.length > 0 && (
+                                <div className="mt-4 w-full pt-2">
+                                  <div className="flex flex-col gap-1.5">
+                                    <span className="text-[11px] font-bold uppercase text-pplx-muted tracking-wider mb-1 opacity-70">
+                                      Întrebări sugerate
                                     </span>
-                                    <span className="font-medium text-[9px] md:text-xs whitespace-nowrap">
-                                      Workspace
-                                    </span>
+                                    {msg.relatedQuestions.map((q, i) => (
+                                      <button
+                                        key={i}
+                                        onClick={() =>
+                                          handleSendMessage(
+                                            q,
+                                            [FocusMode.ALL],
+                                            ProMode.STANDARD,
+                                            [],
+                                          )
+                                        }
+                                        className="text-[13px] italic text-pplx-muted hover:text-pplx-text transition-colors text-left leading-relaxed"
+                                      >
+                                        {q}
+                                      </button>
+                                    ))}
                                   </div>
-                                </button>
-
-                                {/* Workspace Picker Popup */}
-                                {activeAddToSpaceId === msg.id && (
-                                  <>
-                                    <div
-                                      className="fixed inset-0 z-30"
-                                      onClick={() =>
-                                        setActiveAddToSpaceId(null)
-                                      }
-                                    />
-                                    <div className="absolute bottom-full right-0 mb-2 w-56 bg-pplx-card border border-pplx-border rounded-xl shadow-xl z-40 p-1 animate-in slide-in-from-bottom-2 fade-in duration-150 origin-bottom-right">
-                                      <div className="px-3 py-2 text-[10px] font-bold text-pplx-muted uppercase tracking-wider">
-                                        Select Space
-                                      </div>
-                                      <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                                        {spaces.length === 0 && (
-                                          <div className="px-3 py-2 text-xs text-pplx-muted italic">
-                                            No spaces created yet.
-                                          </div>
-                                        )}
-                                        {spaces.map((space) => (
-                                          <button
-                                            key={space.id}
-                                            onClick={() =>
-                                              handleAddToSpace(
-                                                space.id,
-                                                msg.content,
-                                              )
-                                            }
-                                            className="w-full text-left px-3 py-2 text-xs text-pplx-text hover:bg-pplx-hover rounded-lg flex items-center gap-2 truncate"
-                                          >
-                                            <span>{space.emoji}</span>
-                                            <span className="truncate">
-                                              {space.title}
-                                            </span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Compact Related Questions - Clickable Text */}
-                          {msg.role === Role.MODEL &&
-                            msg.relatedQuestions &&
-                            msg.relatedQuestions.length > 0 && (
-                              <div className="mt-4 w-full pt-2">
-                                <div className="flex flex-col gap-1.5">
-                                  <span className="text-[11px] font-bold uppercase text-pplx-muted tracking-wider mb-1 opacity-70">
-                                    Întrebări sugerate
-                                  </span>
-                                  {msg.relatedQuestions.map((q, i) => (
-                                    <button
-                                      key={i}
-                                      onClick={() =>
-                                        handleSendMessage(
-                                          q,
-                                          [FocusMode.ALL],
-                                          ProMode.STANDARD,
-                                          [],
-                                        )
-                                      }
-                                      className="text-[13px] italic text-pplx-muted hover:text-pplx-text transition-colors text-left leading-relaxed"
-                                    >
-                                      {q}
-                                    </button>
-                                  ))}
                                 </div>
-                              </div>
-                            )}
+                              )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
 
               {/* Floating Scroll to Bottom Button */}
               {showScrollButton && (
@@ -3751,7 +3784,7 @@ function App() {
           isOpen={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           settings={settings}
-          onSave={setSettings}
+          onSave={handleUpdateSettings}
           initialTab={settingsInitialTab}
         />
         <SpacesModal
