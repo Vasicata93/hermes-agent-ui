@@ -204,9 +204,11 @@ export class HermesApiClient {
   static async getStore(storeName: string, key: string) {
     if (isElectron) {
       const res = await window.hermesAPI!.getStore({ storeName, key });
-      return res?.data; // from the generic proxy wrapper
+      // The bridge returns { ok, data: { data: ... } } because the backend returns {data: ...}
+      return res?.data?.data; 
     }
-    return this.get(`/api/store/${storeName}/${key}`);
+    const res = await this.get(`/api/store/${storeName}/${key}`);
+    return res?.data;
   }
 
   static async setStore(storeName: string, key: string, payload: any) {

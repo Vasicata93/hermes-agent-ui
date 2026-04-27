@@ -507,15 +507,16 @@ function App() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const savedSettings = await db.get<AppSettings>(
+        const savedSettings = await db.get<any>(
           STORES.SETTINGS,
           "app_settings",
         );
-        if (savedSettings) {
+        console.log("Loaded settings from backend:", savedSettings);
+        if (savedSettings && typeof savedSettings === 'object') {
           const mergedSettings = { ...DEFAULT_SETTINGS, ...savedSettings };
-          if (!mergedSettings.userProfile)
+          if (!mergedSettings.userProfile || typeof mergedSettings.userProfile !== 'object')
             mergedSettings.userProfile = DEFAULT_SETTINGS.userProfile;
-          if (!mergedSettings.aiProfile)
+          if (!mergedSettings.aiProfile || typeof mergedSettings.aiProfile !== 'object')
             mergedSettings.aiProfile = DEFAULT_SETTINGS.aiProfile;
           // Migrate old local models if they exist in a weird format
           if (
@@ -526,21 +527,31 @@ function App() {
             mergedSettings.activeLocalModelId = "";
           }
           setSettings(mergedSettings);
+        } else {
+          console.warn("No valid settings found, using defaults");
+          setSettings(DEFAULT_SETTINGS);
         }
         const savedThreads = await db.get<Thread[]>(
           STORES.THREADS,
           "all_threads",
         );
-        if (savedThreads) setThreads(savedThreads);
+        console.log(`Loaded ${savedThreads?.length || 0} threads`);
+        if (Array.isArray(savedThreads)) setThreads(savedThreads);
+
         const savedSpaces = await db.get<Space[]>(STORES.SPACES, "all_spaces");
-        if (savedSpaces) setSpaces(savedSpaces);
+        console.log(`Loaded ${savedSpaces?.length || 0} spaces`);
+        if (Array.isArray(savedSpaces)) setSpaces(savedSpaces);
+
         const savedNotes = await db.get<Note[]>(STORES.NOTES, "all_notes");
-        if (savedNotes) setNotes(savedNotes);
+        console.log(`Loaded ${savedNotes?.length || 0} notes`);
+        if (Array.isArray(savedNotes)) setNotes(savedNotes);
+
         const savedEvents = await db.get<CalendarEvent[]>(
           STORES.CALENDAR,
           "all_events",
         );
-        if (savedEvents) setEvents(savedEvents);
+        console.log(`Loaded ${savedEvents?.length || 0} events`);
+        if (Array.isArray(savedEvents)) setEvents(savedEvents);
 
         const urlParams = new URLSearchParams(window.location.search);
         const noteIdParam = urlParams.get("noteId");
@@ -2342,6 +2353,20 @@ function App() {
       document.body.classList.remove("dock-active");
     }
   }, [settings.enableMobileDock]);
+
+  if (!isLoaded) {
+    return (
+      <div className="h-screen w-screen bg-[#191919] flex flex-col items-center justify-center">
+        <div className="relative w-16 h-16">
+          <div className="absolute inset-0 border-t-2 border-pplx-accent rounded-full animate-spin"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Bot size={24} className="text-pplx-accent animate-pulse" />
+          </div>
+        </div>
+        <span className="mt-4 text-pplx-muted text-sm font-medium animate-pulse">Initializing Hermes Agent...</span>
+      </div>
+    );
+  }
 
   return (
     <div

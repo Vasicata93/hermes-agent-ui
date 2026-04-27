@@ -401,6 +401,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
               name: `Screen ${new Date().toLocaleTimeString()}.jpg`,
             };
             setAttachments((prev) => [...prev, newAttachment]);
+            if (setIsAgentMode) setIsAgentMode(true);
           }
 
           // Stop the stream immediately after capturing the snapshot
@@ -434,6 +435,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
           name: file.name,
         };
         setAttachments((prev) => [...prev, newAttachment]);
+        if (setIsAgentMode) setIsAgentMode(true);
         setShowAttachMenu(false);
       };
 

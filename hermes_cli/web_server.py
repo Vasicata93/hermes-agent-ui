@@ -1987,6 +1987,12 @@ async def set_store(store_name: str, key: str, request: Request):
     try:
         val = json.dumps(payload) if not isinstance(payload, str) else payload
         db.set_meta(f"{store_name}:{key}", val)
+        
+        # Trigger background memory sync if notes are updated
+        if store_name == "notes" and key == "all_notes":
+            if isinstance(payload, list):
+                asyncio.create_task(sync_notes_to_memory(payload))
+                
         return {"ok": True}
     finally:
         db.close()
@@ -2010,6 +2016,59 @@ class ChatMessageRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     agent_mode: bool = False
+    is_long_thinking: bool = False
+
+class NoteSyncRequest(BaseModel):
+    notes: List[Dict[str, Any]]
+
+async def sync_notes_to_memory(notes: List[Dict[str, Any]]):
+    """Index UI notes into Hermes memory provider."""
+    try:
+        from run_agent import AIAgent
+        from agent.memory_manager import MemoryManager
+        from agent.memory_provider_builtin import BuiltinMemoryProvider
+        from hermes_cli.config import load_config
+        
+        config = load_config()
+        hermes_home = get_hermes_home()
+        
+        # Initialize a temporary agent/memory manager to access providers
+        # We don't need a full LLM client for this.
+        manager = MemoryManager()
+        builtin = BuiltinMemoryProvider()
+        builtin.initialize(session_id="sync_task", hermes_home=str(hermes_home))
+        manager.add_provider(builtin)
+        
+        # Add external provider if configured
+        ext_provider_name = config.get("memory", {}).get("provider")
+        if ext_provider_name and ext_provider_name != "builtin":
+            from agent.memory_manager import discover_memory_providers
+            providers = discover_memory_providers()
+            if ext_provider_name in providers:
+                ext_p = providers[ext_provider_name]()
+                if ext_p.is_available():
+                    ext_p.initialize(session_id="sync_task", hermes_home=str(hermes_home))
+                    manager.add_provider(ext_p)
+        
+        for note in notes:
+            content = note.get("content", "")
+            title = note.get("title", "Untitled Note")
+            note_id = note.get("id", "unknown")
+            if not content:
+                continue
+            
+            memory_text = f"Note ({title}): {content}"
+            # Notify all providers of this 'write'
+            manager.on_memory_write(
+                action="add",
+                target="memory",
+                content=memory_text,
+                metadata={"source": "ui_note", "note_id": note_id, "title": title}
+            )
+            
+        manager.shutdown_all()
+    except Exception as e:
+        _log.error(f"Failed to sync notes to memory: {e}")
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatMessageRequest):
@@ -2019,14 +2078,27 @@ async def chat_endpoint(request: ChatMessageRequest):
 
     model = config.get("model", "")
     
+    # Load Hermes Rules (SOUL.md)
+    soul_path = get_hermes_home() / "SOUL.md"
+    system_prompt = None
+    if soul_path.exists():
+        system_prompt = soul_path.read_text(encoding="utf-8")
+    
+    # Initialize Agent with full toolset and Hermes memory
     agent = AIAgent(
         model=model,
-        api_mode="chat_completions",
+        # Use a higher iteration count for agent mode, 
+        # or 2 for chat mode (1 tool call allowed).
         max_iterations=90 if request.agent_mode else 2,
         quiet_mode=True,
         session_id=request.session_id,
-        platform="ui"
+        platform="ui",
+        ephemeral_system_prompt=system_prompt
     )
+    
+    # Ensure thinking is enabled if requested
+    if request.is_long_thinking:
+        agent.reasoning_config = {"enabled": True, "effort": "high"}
     
     response_text = agent.chat(request.message)
     return {
