@@ -233,6 +233,18 @@ export class HermesApiClient {
     return this.get('/api/memory');
   }
 
+  static async addMemory(target: 'memory' | 'user', content: string) {
+    return this.post('/api/memory', { target, content, action: 'add' });
+  }
+
+  static async removeMemory(target: 'memory' | 'user', content: string) {
+    return this.post('/api/memory', { target, content, action: 'remove' });
+  }
+
+  static async clearMemory() {
+    return this.post('/api/memory/clear', {});
+  }
+
   static async createTask(taskDefinition: any) {
     return this.post('/api/tasks', taskDefinition);
   }

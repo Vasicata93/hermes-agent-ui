@@ -47,11 +47,23 @@ import {
   MemoryItem,
   MemoryCategory,
 } from "../types";
-import { MemoryService } from "../services/memoryService";
-import { UI_STRINGS, AVAILABLE_OFFLINE_MODELS } from "../constants";
-// Removed localLlmService import
 import { useIntegrationStore } from "../store/integrationStore";
 import { connectorManager } from "../services/integration/ConnectorManager";
+import { HermesApiClient } from "../services/hermes/hermesApiClient";
+import { UI_STRINGS, AVAILABLE_OFFLINE_MODELS } from "../constants";
+
+// --- HELPERS ---
+
+const checkLocalModelSupport = () => {
+  if (typeof navigator === "undefined" || !(navigator as any).gpu) {
+    return {
+      supported: false,
+      reason: "WebGPU not supported",
+      details: "Please use a desktop browser with WebGPU support enabled."
+    };
+  }
+  return { supported: true };
+};
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -484,7 +496,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       } else {
         setLlmType("cloud");
       }
-      MemoryService.getMemories().then(setMemories);
+      HermesApiClient.getMemory().then(res => {
+        const mapped = [
+          ...(res.memory || []).map((content: string) => ({ id: content, content, category: 'other' })),
+          ...(res.user || []).map((content: string) => ({ id: content, content, category: 'about_me' }))
+        ];
+        setMemories(mapped);
+      });
     }
   }, [settings, isOpen]);
 
@@ -523,26 +541,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleAddMemory = async () => {
     if (!newMemoryContent.trim()) return;
-    await MemoryService.addMemory(newMemoryContent, newMemoryCategory);
-    const updated = await MemoryService.getMemories();
-    setMemories(updated);
+    const target = (newMemoryCategory === "about_me" || newMemoryCategory === "preferences") ? "user" : "memory";
+    await HermesApiClient.addMemory(target, newMemoryContent);
+    
+    const res = await HermesApiClient.getMemory();
+    const mapped = [
+      ...(res.memory || []).map((content: string) => ({ id: content, content, category: 'other' })),
+      ...(res.user || []).map((content: string) => ({ id: content, content, category: 'about_me' }))
+    ];
+    setMemories(mapped);
     setNewMemoryContent("");
     setIsAddingMemory(false);
   };
 
   const handleDeleteMemory = async (id: string) => {
-    await MemoryService.deleteMemory(id);
-    const updated = await MemoryService.getMemories();
-    setMemories(updated);
+    // We used content as ID in the mapping above
+    const target = memories.find(m => m.id === id)?.category === "about_me" ? "user" : "memory";
+    await HermesApiClient.removeMemory(target, id);
+    
+    const res = await HermesApiClient.getMemory();
+    const mapped = [
+      ...(res.memory || []).map((content: string) => ({ id: content, content, category: 'other' })),
+      ...(res.user || []).map((content: string) => ({ id: content, content, category: 'about_me' }))
+    ];
+    setMemories(mapped);
   };
 
   const handleClearMemory = async () => {
     if (
       confirm(
-        "Are you sure you want to forget everything about you? This cannot be undone.",
+        "Are you sure you want to forget everything about you? This will clear Hermes memory and cannot be undone.",
       )
     ) {
-      await MemoryService.clearMemories();
+      await HermesApiClient.clearMemory();
       setMemories([]);
     }
   };

@@ -1988,10 +1988,18 @@ async def set_store(store_name: str, key: str, request: Request):
         val = json.dumps(payload) if not isinstance(payload, str) else payload
         db.set_meta(f"{store_name}:{key}", val)
         
-        # Trigger background memory sync if notes are updated
-        if store_name == "notes" and key == "all_notes":
+        sync_mapping = {
+            "notes": "all_notes",
+            "calendar": "all_events",
+            "spaces": "all_spaces",
+            "projects": "active_projects",
+            "memories": "all_memories",
+            "threads": "all_threads"
+        }
+        
+        if store_name in sync_mapping and key == sync_mapping[store_name]:
             if isinstance(payload, list):
-                asyncio.create_task(sync_notes_to_memory(payload))
+                asyncio.create_task(sync_ui_data_to_memory(store_name, payload))
                 
         return {"ok": True}
     finally:
@@ -2021,54 +2029,172 @@ class ChatMessageRequest(BaseModel):
 class NoteSyncRequest(BaseModel):
     notes: List[Dict[str, Any]]
 
-async def sync_notes_to_memory(notes: List[Dict[str, Any]]):
-    """Index UI notes into Hermes memory provider."""
+async def sync_ui_data_to_memory(category: str, items: List[Dict[str, Any]]):
+    """Index UI data (notes, events, spaces, etc.) into Hermes memory provider."""
     try:
-        from run_agent import AIAgent
-        from agent.memory_manager import MemoryManager
-        from agent.memory_provider_builtin import BuiltinMemoryProvider
+        from tools.memory_tool import MemoryStore
         from hermes_cli.config import load_config
+        from agent.memory_manager import MemoryManager
+        from plugins.memory import load_memory_provider
         
         config = load_config()
         hermes_home = get_hermes_home()
         
-        # Initialize a temporary agent/memory manager to access providers
-        # We don't need a full LLM client for this.
+        # 1. Update Built-in Memory Store (MEMORY.md)
+        store = MemoryStore()
+        store.load_from_disk()
+        
+        # 2. Setup External Provider if active
         manager = MemoryManager()
-        builtin = BuiltinMemoryProvider()
-        builtin.initialize(session_id="sync_task", hermes_home=str(hermes_home))
-        manager.add_provider(builtin)
-        
-        # Add external provider if configured
         ext_provider_name = config.get("memory", {}).get("provider")
-        if ext_provider_name and ext_provider_name != "builtin":
-            from agent.memory_manager import discover_memory_providers
-            providers = discover_memory_providers()
-            if ext_provider_name in providers:
-                ext_p = providers[ext_provider_name]()
-                if ext_p.is_available():
-                    ext_p.initialize(session_id="sync_task", hermes_home=str(hermes_home))
-                    manager.add_provider(ext_p)
+        if ext_provider_name:
+            ext_p = load_memory_provider(ext_provider_name)
+            if ext_p and ext_p.is_available():
+                ext_p.initialize(session_id="sync_task", hermes_home=str(hermes_home))
+                manager.add_provider(ext_p)
         
-        for note in notes:
-            content = note.get("content", "")
-            title = note.get("title", "Untitled Note")
-            note_id = note.get("id", "unknown")
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+                
+            content = ""
+            title = ""
+            metadata = {"source": f"ui_{category}"}
+            
+            if category == "notes":
+                content = item.get("content", "").strip()
+                title = item.get("title", "Untitled Note").strip()
+                metadata.update({"note_id": item.get("id"), "title": title})
+            elif category == "calendar":
+                content = item.get("description", "").strip()
+                title = item.get("title", "Untitled Event").strip()
+                start = item.get("start", "")
+                metadata.update({"event_id": item.get("id"), "title": title, "start": start})
+                content = f"Event on {start}: {content}"
+            elif category == "spaces":
+                content = item.get("description", "").strip()
+                title = item.get("name", "Untitled Space").strip()
+                metadata.update({"space_id": item.get("id"), "name": title})
+            elif category == "projects":
+                content = f"Progress: {item.get('progress', '')}\nNext: {item.get('nextStep', '')}"
+                title = item.get("title", "Untitled Project").strip()
+                metadata.update({"project_id": item.get("id"), "title": title})
+            elif category == "memories":
+                content = item.get("content", "").strip()
+                title = item.get("category", "General Memory").strip()
+                metadata.update({"memory_id": item.get("id"), "category": title})
+            elif category == "threads":
+                content = f"Thread history placeholder" # Threads are complex, for now we just index their presence/titles
+                title = item.get("title", "Untitled Thread").strip()
+                metadata.update({"thread_id": item.get("id"), "title": title})
+
             if not content:
                 continue
             
-            memory_text = f"Note ({title}): {content}"
-            # Notify all providers of this 'write'
+            memory_text = f"{category.capitalize()} ({title}): {content}"
+            
+            # Save to MEMORY.md (built-in)
+            store.add("memory", memory_text)
+            
+            # Notify external provider (e.g. Mem0, Honcho)
             manager.on_memory_write(
                 action="add",
                 target="memory",
                 content=memory_text,
-                metadata={"source": "ui_note", "note_id": note_id, "title": title}
+                metadata=metadata
             )
             
         manager.shutdown_all()
     except Exception as e:
-        _log.error(f"Failed to sync notes to memory: {e}")
+        _log.error(f"Failed to sync {category} to memory: {e}")
+
+async def initial_sync():
+    """Read all UI data from DB and perform a one-time sync to Hermes memory."""
+    from hermes_state import SessionDB
+    db = SessionDB()
+    try:
+        _log.info("Starting initial UI data sync to Hermes memory...")
+        sync_mapping = {
+            "notes": "all_notes",
+            "calendar": "all_events",
+            "spaces": "all_spaces",
+            "projects": "active_projects",
+            "memories": "all_memories",
+            "threads": "all_threads"
+        }
+        
+        for category, key in sync_mapping.items():
+            val_raw = db.get_meta(f"{category}:{key}")
+            if val_raw:
+                try:
+                    items = json.loads(val_raw)
+                    if isinstance(items, list):
+                        await sync_ui_data_to_memory(category, items)
+                except Exception as e:
+                    _log.error(f"Failed to parse {category} for initial sync: {e}")
+        _log.info("Initial sync completed.")
+    finally:
+        db.close()
+
+@app.on_event("startup")
+async def on_startup():
+    asyncio.create_task(initial_sync())
+
+@app.get("/api/memory")
+async def get_memory():
+    """Read MEMORY.md and USER.md from disk."""
+    from tools.memory_tool import MemoryStore
+    try:
+        store = MemoryStore()
+        store.load_from_disk()
+        return {
+            "memory": store.memory_entries,
+            "user": store.user_entries
+        }
+    except Exception as e:
+        _log.error(f"Failed to get memory: {e}")
+        return {"memory": [], "user": []}
+
+class MemoryActionRequest(BaseModel):
+    target: str
+    content: str
+    action: str
+
+@app.post("/api/memory")
+async def update_memory(request: MemoryActionRequest):
+    """Add or remove an entry from Hermes memory."""
+    from tools.memory_tool import MemoryStore
+    try:
+        store = MemoryStore()
+        store.load_from_disk()
+        
+        if request.action == "add":
+            res = store.add(request.target, request.content)
+        elif request.action == "remove":
+            res = store.remove(request.target, request.content)
+        else:
+            return {"ok": False, "error": f"Invalid action: {request.action}"}
+            
+        return {"ok": res.get("success", False), "data": res}
+    except Exception as e:
+        _log.error(f"Failed to update memory: {e}")
+        return {"ok": False, "error": str(e)}
+
+@app.post("/api/memory/clear")
+async def clear_memory():
+    """Clear all Hermes memory files."""
+    from tools.memory_tool import get_memory_dir
+    import os
+    try:
+        mem_dir = get_memory_dir()
+        for f in ["MEMORY.md", "USER.md"]:
+            path = mem_dir / f
+            if path.exists():
+                os.remove(path)
+        return {"ok": True}
+    except Exception as e:
+        _log.error(f"Failed to clear memory: {e}")
+        return {"ok": False, "error": str(e)}
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatMessageRequest):

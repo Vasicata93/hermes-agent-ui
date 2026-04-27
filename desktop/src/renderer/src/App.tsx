@@ -72,6 +72,7 @@ import {
   ArrowDown,
   MessageSquare,
   Plus,
+  Bot,
 } from "lucide-react";
 import { db, STORES } from "./services/db";
 import { initializeIntegrations } from "./services/integration/init";
@@ -82,6 +83,7 @@ import { v4 as uuidv4 } from "uuid";
 import { portfolioService } from "./services/portfolioService";
 import { safeDigitalService } from "./services/safeDigitalService";
 import { semanticRouter } from "./services/agent/SemanticRouter";
+import { HermesApiClient } from "./services/hermes/hermesApiClient";
 
 // --- End of imports ---
 import { Toaster } from 'react-hot-toast';
@@ -1097,7 +1099,7 @@ function App() {
       .replace(/\n\n/g, ". ")
       .substring(0, 4000);
 
-    const useNativeFallback = () => {
+    const playNativeFallbackTTS = () => {
       if (ttsPlaybackIdRef.current !== playbackId) return;
       const utterance = new SpeechSynthesisUtterance(cleanText);
       const voices = window.speechSynthesis.getVoices();
@@ -1110,7 +1112,7 @@ function App() {
     };
 
     if (!settings.geminiApiKey) {
-      useNativeFallback();
+      playNativeFallbackTTS();
       return;
     }
 
@@ -1210,13 +1212,13 @@ function App() {
       // because we must wait for the actual AudioBuffers to finish playing via `onended`.
       // If we fell through due to a stop or native fallback condition:
       if (hasError && !hasPlayedFirstChunk && ttsPlaybackIdRef.current === playbackId) {
-         useNativeFallback();
+         playNativeFallbackTTS();
       }
 
     } catch (e) {
       console.error("TTS failed", e);
       if (ttsPlaybackIdRef.current === playbackId) {
-         useNativeFallback();
+         playNativeFallbackTTS();
       } else {
          setIsPlayingAudio(false);
       }
@@ -2354,6 +2356,8 @@ function App() {
     }
   }, [settings.enableMobileDock]);
 
+
+  // The isLoaded check must be placed HERE, after all hooks are declared.
   if (!isLoaded) {
     return (
       <div className="h-screen w-screen bg-[#191919] flex flex-col items-center justify-center">
