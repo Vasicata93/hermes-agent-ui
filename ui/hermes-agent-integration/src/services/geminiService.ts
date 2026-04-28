@@ -640,27 +640,27 @@ export class LLMService {
           const data = await res.json();
           if (!res.ok || !data.choices || !data.choices[0]) {
             let errorMessage = data.error?.message || (typeof data.error === 'string' ? data.error : JSON.stringify(data)) || "Unknown API error";
-            
+
             // OpenRouter specific error details
             if (data.error?.metadata?.raw) {
               errorMessage = `${errorMessage} (Details: ${data.error.metadata.raw})`;
             }
-            
+
             throw new Error(errorMessage);
           }
           return this.extractJson(data.choices[0].message.content);
         } catch (error) {
           clearTimeout(timeoutId);
           lastError = error;
-          
+
           if (retryCount < maxRetries && (error instanceof Error && (error.name === 'AbortError' || error.message.includes('fetch')))) {
-             retryCount++;
-             const delay = 1000 * retryCount;
-             console.warn(`[callLLMJson] Network error for ${provider}. Retrying in ${delay}ms... (Attempt ${retryCount}/${maxRetries})`);
-             await new Promise(resolve => setTimeout(resolve, delay));
-             continue;
+            retryCount++;
+            const delay = 1000 * retryCount;
+            console.warn(`[callLLMJson] Network error for ${provider}. Retrying in ${delay}ms... (Attempt ${retryCount}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
           }
-          
+
           console.error("Error generating JSON with provider:", provider, error);
           throw error;
         }
@@ -710,10 +710,10 @@ export class LLMService {
       const client = new GoogleGenAI({
         apiKey: geminiApiKey || this.apiKey || "",
       });
-      
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000);
-      
+
       try {
         const response = await client.models.generateContent({
           model: "gemini-2.5-flash",
@@ -758,20 +758,20 @@ export class LLMService {
         model: modelName,
         messages: [{ role: "user", content: prompt }],
       };
-      
+
       if (requireJson) {
         if (provider === ModelProvider.OPENAI) {
           body.response_format = { type: "json_object" };
         } else if (provider === ModelProvider.OPENROUTER || provider === ModelProvider.LOCAL) {
-            // Some local models and OpenRouter models support this
-            body.response_format = { type: "json_object" };
+          // Some local models and OpenRouter models support this
+          body.response_format = { type: "json_object" };
         }
       }
 
       let response: Response;
       let retryCount = 0;
       const maxRetries = 3;
-      
+
       while (true) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
@@ -792,22 +792,22 @@ export class LLMService {
         }
         break;
       }
-      
+
       const contentType = response.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
         const text = await response.text();
         throw new Error(`Expected JSON response, got ${contentType}: ${text.substring(0, 100)}`);
       }
-      
+
       const data = await response.json();
       if (!response.ok || !data.choices || !data.choices[0]) {
         let errorMessage = data.error?.message || (typeof data.error === 'string' ? data.error : JSON.stringify(data)) || "Unknown API error";
-        
+
         // OpenRouter specific error details
         if (data.error?.metadata?.raw) {
           errorMessage = `${errorMessage} (Details: ${data.error.metadata.raw})`;
         }
-        
+
         throw new Error(errorMessage);
       }
       return data.choices[0].message.content || "";
@@ -965,9 +965,9 @@ export class LLMService {
     }
 
     if (
-      plan.route === "simple" || 
-      plan.route === "medium" || 
-      !plan.steps || 
+      plan.route === "simple" ||
+      plan.route === "medium" ||
+      !plan.steps ||
       plan.steps.length === 0
     ) {
       if (onChunk) customOnChunk("", "⚡ Chat Mode: Execuție rapidă...\n");
@@ -993,7 +993,7 @@ export class LLMService {
         braveApiKey,
         customOnChunk,
       );
-      this.triggerMemoryConsolidation( prompt, result.text, enableMemory, geminiApiKey );
+      this.triggerMemoryConsolidation(prompt, result.text, enableMemory, geminiApiKey);
       result.reasoning = accumulatedReasoning + (result.reasoning || "");
       return result;
     }
@@ -1029,7 +1029,7 @@ export class LLMService {
               If you already have the data, or you finished the tool calls, provide a factual summary of the execution result for this task.`;
 
         const executorOnChunk = (text: string, reasoning?: string) => {
-          if (text) customOnChunk("", text); 
+          if (text) customOnChunk("", text);
           if (reasoning) customOnChunk("", reasoning);
         };
 
@@ -1085,17 +1085,17 @@ export class LLMService {
 
         let critique;
         try {
-          critique = await this.callLLMJson( prompt, criticSys, provider, openRouterKey, openRouterModel, openAiKey, openAiModel, activeLocalModel, geminiApiKey, [] );
-        } catch(e) {
+          critique = await this.callLLMJson(prompt, criticSys, provider, openRouterKey, openRouterModel, openAiKey, openAiModel, activeLocalModel, geminiApiKey, []);
+        } catch (e) {
           critique = { is_sufficient: true };
         }
 
         if (critique.new_required_task) {
-           todoList.push(critique.new_required_task);
-           if (onChunk) customOnChunk("", `\n⚠️ Adaug în TODO List: "${critique.new_required_task}" \n`);
+          todoList.push(critique.new_required_task);
+          if (onChunk) customOnChunk("", `\n⚠️ Adaug în TODO List: "${critique.new_required_task}" \n`);
         } else if (todoList.length === 0 && !critique.is_sufficient) {
-           todoList.push("Perform a final comprehensive search to fill remaining gaps.");
-           if (onChunk) customOnChunk("", `\n⚠️ Fallback: Listă goală dar informații insuficiente. Adaug o căutare de final.\n`);
+          todoList.push("Perform a final comprehensive search to fill remaining gaps.");
+          if (onChunk) customOnChunk("", `\n⚠️ Fallback: Listă goală dar informații insuficiente. Adaug o căutare de final.\n`);
         }
       }
     }
@@ -1169,7 +1169,7 @@ export class LLMService {
       const truncatedContext =
         researchContext.length > maxContextLength
           ? researchContext.substring(0, maxContextLength) +
-            "\n\n[...Context truncated due to length limits...]"
+          "\n\n[...Context truncated due to length limits...]"
           : researchContext;
 
       const fallbackSys = `${baseSystemContext}\n\nYou are the Expert Analyst Agent. You have conducted deep research and gathered a vast context. Your task is to synthesize this data into a final response for the user.
@@ -1351,7 +1351,7 @@ export class LLMService {
         spaceSystemInstruction,
         provider === ModelProvider.GEMINI ? false : forceReasoning, // Only force XML thinking for non-Gemini
         provider !== ModelProvider.GEMINI &&
-          (forceSearch || virtualFiles.length > 0), // Force explicit tool instruction for generics
+        (forceSearch || virtualFiles.length > 0), // Force explicit tool instruction for generics
       ));
 
     let result: {
@@ -1466,7 +1466,7 @@ export class LLMService {
           const candidate = text.substring(firstOpen, lastClose + 1);
           try {
             return JSON.parse(candidate);
-          } catch (e3) {}
+          } catch (e3) { }
         }
         throw e;
       }
@@ -1525,7 +1525,7 @@ export class LLMService {
       if (customApiKey) {
         try {
           clientToUse = new GoogleGenAI({ apiKey: customApiKey });
-        } catch (e) {}
+        } catch (e) { }
       }
       if (!clientToUse) return;
 
@@ -1646,8 +1646,8 @@ export class LLMService {
 
     const modelId =
       enableReasoning ||
-      proMode === ProMode.REASONING ||
-      proMode === ProMode.THINKING
+        proMode === ProMode.REASONING ||
+        proMode === ProMode.THINKING
         ? "gemini-3.1-pro-preview"
         : "gemini-3-flash-preview";
 
@@ -1655,9 +1655,9 @@ export class LLMService {
     if (useSearch) {
       tools.push({ googleSearch: {} });
     }
-    
+
     const dynamicSkills = skillManager.getAvailableSkills().map(skill => skillManager.getGeminiTool(skill));
-    
+
     const allFunctionDeclarations = [
       libraryToolGemini,
       calendarToolGemini,
@@ -1730,12 +1730,12 @@ export class LLMService {
           httpOptions:
             tools.length > 0
               ? ({
-                  extraBody: {
-                    tool_config: {
-                      include_server_side_tool_invocations: true,
-                    },
+                extraBody: {
+                  tool_config: {
+                    include_server_side_tool_invocations: true,
                   },
-                } as any)
+                },
+              } as any)
               : undefined,
         },
       });
@@ -1751,7 +1751,7 @@ export class LLMService {
       while (turns < maxTurns) {
         const fetchController = new AbortController();
         const timeoutId = setTimeout(() => fetchController.abort(), 120000); // 120s timeout per turn
-        
+
         const onUserAbort = () => fetchController.abort();
         if (this.abortController) {
           this.abortController.signal.addEventListener('abort', onUserAbort);
@@ -1777,274 +1777,311 @@ export class LLMService {
               .map((p: any) => p.functionCall);
             if (fc && fc.length > 0) functionCalls = [...functionCalls, ...fc];
 
-          // Extract Text and Reasoning
-          let text = "";
-          if (chunk.candidates?.[0]?.content?.parts) {
-            for (const part of chunk.candidates[0].content.parts) {
-              if (part.text) {
-                text += part.text;
-              }
-              // Handle Gemini 2.0/3.0 Thinking models
-              if ((part as any).thought) {
-                const thought = (part as any).thought;
-                reasoning += thought;
-                if (onChunk) onChunk("", thought);
+            // Extract Text and Reasoning
+            let text = "";
+            if (chunk.candidates?.[0]?.content?.parts) {
+              for (const part of chunk.candidates[0].content.parts) {
+                if (part.text) {
+                  text += part.text;
+                }
+                // Handle Gemini 2.0/3.0 Thinking models
+                if ((part as any).thought) {
+                  const thought = (part as any).thought;
+                  reasoning += thought;
+                  if (onChunk) onChunk("", thought);
+                }
               }
             }
-          }
 
-          if (text) {
-            turnText += text;
+            if (text) {
+              turnText += text;
 
-            // Check if we are inside a thinking block or if this chunk contains thinking tags
-            const hasThinkingStart = text.includes("<thinking>");
-            const hasThinkingEnd = text.includes("</thinking>");
+              // Check if we are inside a thinking block or if this chunk contains thinking tags
+              const hasThinkingStart = text.includes("<thinking>");
+              const hasThinkingEnd = text.includes("</thinking>");
 
-            if (
-              hasThinkingStart ||
-              hasThinkingEnd ||
-              (reasoning.length > 0 &&
-                !finalResponseText.endsWith("</thinking>"))
-            ) {
-              // Complex logic to separate thinking from response
-              // Simplified for stream:
-              if (hasThinkingStart) {
-                const parts = text.split("<thinking>");
-                if (parts[0]) {
-                  finalResponseText += parts[0];
-                  if (onChunk) onChunk(parts[0], undefined);
-                }
-                if (parts[1]) {
-                  reasoning += parts[1];
-                  if (onChunk) onChunk("", parts[1]);
-                }
-              } else if (hasThinkingEnd) {
-                const parts = text.split("</thinking>");
-                if (parts[0]) {
-                  reasoning += parts[0];
-                  if (onChunk) onChunk("", parts[0]);
-                }
-                if (parts[1]) {
-                  finalResponseText += parts[1];
-                  if (onChunk) onChunk(parts[1], undefined);
-                }
-                // Reset reasoning flag implicitly by structure, but we track it via 'reasoning' var
-              } else {
-                // If we are in reasoning mode (started but not ended)
-                // This is tricky because we don't have a strict state flag here other than 'reasoning' length
-                // But 'reasoning' length > 0 doesn't mean we are currently *in* a thinking block if it was closed previously.
-                // However, the prompt usually generates thinking at the start.
-
-                // Let's rely on a simpler heuristic: if we haven't seen </thinking> yet, it's reasoning.
-                // But wait, what if we have multiple thinking blocks? (Rare for this model)
-
-                // Better approach: maintain a state 'isThinking' across chunks
-                // But for this hotfix, let's assume standard behavior: <thinking>... </thinking> Response.
-
-                if (
-                  reasoning.length > 0 &&
-                  !reasoning.includes("</thinking>")
-                ) {
-                  reasoning += text;
-                  if (onChunk) onChunk("", text);
-                } else {
-                  finalResponseText += text;
-                  if (onChunk) onChunk(text, undefined);
-                }
-              }
-            } else {
-              finalResponseText += text;
-              if (onChunk) onChunk(text, undefined);
-            }
-          }
-
-          // Grounding Metadata
-          const chunks =
-            chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
-          if (chunks) {
-            chunks.forEach((c: any) => {
-              if (c.web?.uri && c.web?.title) {
-                citations.push({ title: c.web.title, uri: c.web.uri });
-              }
-            });
-          }
-        }
-
-        if (functionCalls.length > 0) {
-          const toolResponses: any[] = [];
-
-          for (const fc of functionCalls) {
-            if (fc.name === "library_tool") {
-              const action = fc.args.action;
-              const payload = fc.args.payload || {};
-              
-              if (action === "save_page") {
-                pendingAction = {
-                  type: payload.action === "update" ? "update_page" : "create_page",
-                  data: {
-                    title: payload.title as string,
-                    content: payload.content as string,
-                  },
-                  originalToolCallId: "gemini-fc",
-                };
-                toolResponses.push({
-                  functionResponse: {
-                    name: fc.name,
-                    response: { content: "Action pending user confirmation." },
-                  },
-                });
-              } else if (action === "get_structure") {
-                const title = payload.pageTitle as string;
-                const pageAttachment = attachments.find(
-                  (a) => a.name === title || a.name === title + ".md",
-                );
-                if (pageAttachment && pageAttachment.content) {
-                  const page = BlockService.fromMarkdown(
-                    pageAttachment.content,
-                    title,
-                  );
-                  const structure = page.blocks
-                    .map((b, idx) => {
-                      let context = "";
-                      if (b.type === "table") {
-                        context = `[TABLE] Rows: ${b.content.split("\n").length}`;
-                      } else {
-                        context =
-                          b.content.length > 60
-                            ? b.content.substring(0, 60) + "..."
-                            : b.content;
-                      }
-                      return `Block ${idx + 1}: [ID: ${b.id}] (${b.type}) -> ${context}`;
-                    })
-                    .join("\n");
-                  toolResponses.push({
-                    functionResponse: {
-                      name: fc.name,
-                      response: {
-                        content: `STRUCTURE OF PAGE "${title}":\n${structure}`,
-                      },
-                    },
-                  });
-                } else {
-                  toolResponses.push({
-                    functionResponse: {
-                      name: fc.name,
-                      response: {
-                        content:
-                          "Error: Page not found in current context. Please ask user to open the page first.",
-                      },
-                    },
-                  });
-                }
-              } else if (
-                action === "insert_block" ||
-                action === "replace_block" ||
-                action === "delete_block" ||
-                action === "update_table_cell"
+              if (
+                hasThinkingStart ||
+                hasThinkingEnd ||
+                (reasoning.length > 0 &&
+                  !finalResponseText.endsWith("</thinking>"))
               ) {
-                pendingAction = {
-                  type: "block_operation",
-                  data: {
-                    operation: action,
-                    args: payload,
-                  },
-                  originalToolCallId: "gemini-fc",
-                };
-                toolResponses.push({
-                  functionResponse: {
-                    name: fc.name,
-                    response: {
-                      content: "Block operation pending user confirmation.",
-                    },
-                  },
-                });
+                // Complex logic to separate thinking from response
+                // Simplified for stream:
+                if (hasThinkingStart) {
+                  const parts = text.split("<thinking>");
+                  if (parts[0]) {
+                    finalResponseText += parts[0];
+                    if (onChunk) onChunk(parts[0], undefined);
+                  }
+                  if (parts[1]) {
+                    reasoning += parts[1];
+                    if (onChunk) onChunk("", parts[1]);
+                  }
+                } else if (hasThinkingEnd) {
+                  const parts = text.split("</thinking>");
+                  if (parts[0]) {
+                    reasoning += parts[0];
+                    if (onChunk) onChunk("", parts[0]);
+                  }
+                  if (parts[1]) {
+                    finalResponseText += parts[1];
+                    if (onChunk) onChunk(parts[1], undefined);
+                  }
+                  // Reset reasoning flag implicitly by structure, but we track it via 'reasoning' var
+                } else {
+                  // If we are in reasoning mode (started but not ended)
+                  // This is tricky because we don't have a strict state flag here other than 'reasoning' length
+                  // But 'reasoning' length > 0 doesn't mean we are currently *in* a thinking block if it was closed previously.
+                  // However, the prompt usually generates thinking at the start.
+
+                  // Let's rely on a simpler heuristic: if we haven't seen </thinking> yet, it's reasoning.
+                  // But wait, what if we have multiple thinking blocks? (Rare for this model)
+
+                  // Better approach: maintain a state 'isThinking' across chunks
+                  // But for this hotfix, let's assume standard behavior: <thinking>... </thinking> Response.
+
+                  if (
+                    reasoning.length > 0 &&
+                    !reasoning.includes("</thinking>")
+                  ) {
+                    reasoning += text;
+                    if (onChunk) onChunk("", text);
+                  } else {
+                    finalResponseText += text;
+                    if (onChunk) onChunk(text, undefined);
+                  }
+                }
+              } else {
+                finalResponseText += text;
+                if (onChunk) onChunk(text, undefined);
               }
-            } else if (fc.name === "calendar_tool") {
-              if (fc.args.action === "read_events") {
-                const allEvents =
-                  (await db.get<CalendarEvent[]>(
-                    STORES.CALENDAR,
-                    "all_events",
-                  )) || [];
+            }
 
-                // Default: Start from beginning of today, End 7 days from now
-                let startDate = new Date();
-                startDate.setHours(0, 0, 0, 0);
+            // Grounding Metadata
+            const chunks =
+              chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
+            if (chunks) {
+              chunks.forEach((c: any) => {
+                if (c.web?.uri && c.web?.title) {
+                  citations.push({ title: c.web.title, uri: c.web.uri });
+                }
+              });
+            }
+          }
 
-                let endDate = new Date(startDate);
-                endDate.setDate(endDate.getDate() + 7);
-                endDate.setHours(23, 59, 59, 999);
+          if (functionCalls.length > 0) {
+            const toolResponses: any[] = [];
 
+            for (const fc of functionCalls) {
+              if (fc.name === "library_tool") {
+                const action = fc.args.action;
                 const payload = fc.args.payload || {};
 
-                if (payload.startDate) {
-                  const parsedStart = new Date(payload.startDate as string);
-                  if (!isNaN(parsedStart.getTime())) {
-                    startDate = parsedStart;
+                if (action === "save_page") {
+                  pendingAction = {
+                    type: payload.action === "update" ? "update_page" : "create_page",
+                    data: {
+                      title: payload.title as string,
+                      content: payload.content as string,
+                    },
+                    originalToolCallId: "gemini-fc",
+                  };
+                  toolResponses.push({
+                    functionResponse: {
+                      name: fc.name,
+                      response: { content: "Action pending user confirmation." },
+                    },
+                  });
+                } else if (action === "get_structure") {
+                  const title = payload.pageTitle as string;
+                  const pageAttachment = attachments.find(
+                    (a) => a.name === title || a.name === title + ".md",
+                  );
+                  if (pageAttachment && pageAttachment.content) {
+                    const page = BlockService.fromMarkdown(
+                      pageAttachment.content,
+                      title,
+                    );
+                    const structure = page.blocks
+                      .map((b, idx) => {
+                        let context = "";
+                        if (b.type === "table") {
+                          context = `[TABLE] Rows: ${b.content.split("\n").length}`;
+                        } else {
+                          context =
+                            b.content.length > 60
+                              ? b.content.substring(0, 60) + "..."
+                              : b.content;
+                        }
+                        return `Block ${idx + 1}: [ID: ${b.id}] (${b.type}) -> ${context}`;
+                      })
+                      .join("\n");
+                    toolResponses.push({
+                      functionResponse: {
+                        name: fc.name,
+                        response: {
+                          content: `STRUCTURE OF PAGE "${title}":\n${structure}`,
+                        },
+                      },
+                    });
+                  } else {
+                    toolResponses.push({
+                      functionResponse: {
+                        name: fc.name,
+                        response: {
+                          content:
+                            "Error: Page not found in current context. Please ask user to open the page first.",
+                        },
+                      },
+                    });
                   }
-                }
-                if (payload.endDate) {
-                  const parsedEnd = new Date(payload.endDate as string);
-                  if (!isNaN(parsedEnd.getTime())) {
-                    endDate = parsedEnd;
-                    // If startDate and endDate are the same day (or close), expand endDate to end of day
-                    if (
-                      endDate.getTime() <= startDate.getTime() + 86400000 &&
-                      endDate.getHours() === 0
-                    ) {
-                      endDate.setHours(23, 59, 59, 999);
-                    }
-                  }
-                }
-
-                const relevantEvents = allEvents
-                  .filter((e) => {
-                    const eStart = new Date(e.startDate);
-                    const eEnd = new Date(e.endDate);
-                    return eStart <= endDate && eEnd >= startDate;
-                  })
-                  .sort((a, b) => a.startDate - b.startDate);
-
-                let responseContent = `CALENDAR EVENTS (Range: ${startDate.toLocaleString()} - ${endDate.toLocaleString()}):\n`;
-                if (relevantEvents.length === 0) {
-                  responseContent += "No events found in this range.";
-                } else {
-                  relevantEvents.forEach((e) => {
-                    const startObj = new Date(e.startDate);
-                    const endObj = new Date(e.endDate);
-
-                    if (e.allDay) {
-                      // For all-day events, show just the date
-                      const dateStr = startObj.toLocaleDateString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      });
-                      responseContent += `\n- [ID: ${e.id}] "${e.title}"\n  TYPE: All-day Event\n  DATE: ${dateStr}\n  Location: ${e.location || "N/A"}\n  Description: ${e.description || "N/A"}`;
-                    } else {
-                      const startStr = startObj.toLocaleString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        timeZoneName: "short",
-                      });
-                      const endStr = endObj.toLocaleString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        timeZoneName: "short",
-                      });
-                      responseContent += `\n- [ID: ${e.id}] "${e.title}"\n  SCHEDULED START: ${startStr}\n  SCHEDULED END: ${endStr}\n  Location: ${e.location || "N/A"}\n  Description: ${e.description || "N/A"}`;
-                    }
+                } else if (
+                  action === "insert_block" ||
+                  action === "replace_block" ||
+                  action === "delete_block" ||
+                  action === "update_table_cell"
+                ) {
+                  pendingAction = {
+                    type: "block_operation",
+                    data: {
+                      operation: action,
+                      args: payload,
+                    },
+                    originalToolCallId: "gemini-fc",
+                  };
+                  toolResponses.push({
+                    functionResponse: {
+                      name: fc.name,
+                      response: {
+                        content: "Block operation pending user confirmation.",
+                      },
+                    },
                   });
                 }
+              } else if (fc.name === "calendar_tool") {
+                if (fc.args.action === "read_events") {
+                  const allEvents =
+                    (await db.get<CalendarEvent[]>(
+                      STORES.CALENDAR,
+                      "all_events",
+                    )) || [];
+
+                  // Default: Start from beginning of today, End 7 days from now
+                  let startDate = new Date();
+                  startDate.setHours(0, 0, 0, 0);
+
+                  let endDate = new Date(startDate);
+                  endDate.setDate(endDate.getDate() + 7);
+                  endDate.setHours(23, 59, 59, 999);
+
+                  const payload = fc.args.payload || {};
+
+                  if (payload.startDate) {
+                    const parsedStart = new Date(payload.startDate as string);
+                    if (!isNaN(parsedStart.getTime())) {
+                      startDate = parsedStart;
+                    }
+                  }
+                  if (payload.endDate) {
+                    const parsedEnd = new Date(payload.endDate as string);
+                    if (!isNaN(parsedEnd.getTime())) {
+                      endDate = parsedEnd;
+                      // If startDate and endDate are the same day (or close), expand endDate to end of day
+                      if (
+                        endDate.getTime() <= startDate.getTime() + 86400000 &&
+                        endDate.getHours() === 0
+                      ) {
+                        endDate.setHours(23, 59, 59, 999);
+                      }
+                    }
+                  }
+
+                  const relevantEvents = allEvents
+                    .filter((e) => {
+                      const eStart = new Date(e.startDate);
+                      const eEnd = new Date(e.endDate);
+                      return eStart <= endDate && eEnd >= startDate;
+                    })
+                    .sort((a, b) => a.startDate - b.startDate);
+
+                  let responseContent = `CALENDAR EVENTS (Range: ${startDate.toLocaleString()} - ${endDate.toLocaleString()}):\n`;
+                  if (relevantEvents.length === 0) {
+                    responseContent += "No events found in this range.";
+                  } else {
+                    relevantEvents.forEach((e) => {
+                      const startObj = new Date(e.startDate);
+                      const endObj = new Date(e.endDate);
+
+                      if (e.allDay) {
+                        // For all-day events, show just the date
+                        const dateStr = startObj.toLocaleDateString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        });
+                        responseContent += `\n- [ID: ${e.id}] "${e.title}"\n  TYPE: All-day Event\n  DATE: ${dateStr}\n  Location: ${e.location || "N/A"}\n  Description: ${e.description || "N/A"}`;
+                      } else {
+                        const startStr = startObj.toLocaleString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          timeZoneName: "short",
+                        });
+                        const endStr = endObj.toLocaleString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          timeZoneName: "short",
+                        });
+                        responseContent += `\n- [ID: ${e.id}] "${e.title}"\n  SCHEDULED START: ${startStr}\n  SCHEDULED END: ${endStr}\n  Location: ${e.location || "N/A"}\n  Description: ${e.description || "N/A"}`;
+                      }
+                    });
+                  }
+                  toolResponses.push({
+                    functionResponse: {
+                      name: fc.name,
+                      response: { content: responseContent },
+                    },
+                  });
+                  if (onChunk)
+                    onChunk(
+                      "",
+                      `\n📅 Checked calendar: ${relevantEvents.length} events found.\n`,
+                    );
+                } else {
+                  // Write actions
+                  pendingAction = {
+                    type: "calendar_event",
+                    data: {
+                      operation: fc.args.action.replace("_event", ""),
+                      args: fc.args.payload || {},
+                    },
+                    originalToolCallId: "gemini-fc",
+                  };
+                  toolResponses.push({
+                    functionResponse: {
+                      name: fc.name,
+                      response: {
+                        content: "Calendar action pending user confirmation.",
+                      },
+                    },
+                  });
+                }
+              } else if (fc.name === "get_calendar_holidays") {
+                const year = (fc.args.year as number) || new Date().getFullYear();
+                const holidays = getHolidays(year);
+                let responseContent = `HOLIDAYS FOR ${year} (RO & DE):\n`;
+                holidays.forEach((h: any) => {
+                  responseContent += `- ${h.date}: ${h.name} (${h.country}) [${h.isPublic ? "Non-working" : "Observance"}]\n`;
+                });
                 toolResponses.push({
                   functionResponse: {
                     name: fc.name,
@@ -2052,346 +2089,309 @@ export class LLMService {
                   },
                 });
                 if (onChunk)
-                  onChunk(
-                    "",
-                    `\n📅 Checked calendar: ${relevantEvents.length} events found.\n`,
-                  );
-              } else {
-                // Write actions
-                pendingAction = {
-                  type: "calendar_event",
-                  data: {
-                    operation: fc.args.action.replace("_event", ""),
-                    args: fc.args.payload || {},
-                  },
-                  originalToolCallId: "gemini-fc",
-                };
-                toolResponses.push({
-                  functionResponse: {
-                    name: fc.name,
-                    response: {
-                      content: "Calendar action pending user confirmation.",
-                    },
-                  },
-                });
-              }
-            } else if (fc.name === "get_calendar_holidays") {
-              const year = (fc.args.year as number) || new Date().getFullYear();
-              const holidays = getHolidays(year);
-              let responseContent = `HOLIDAYS FOR ${year} (RO & DE):\n`;
-              holidays.forEach((h: any) => {
-                responseContent += `- ${h.date}: ${h.name} (${h.country}) [${h.isPublic ? "Non-working" : "Observance"}]\n`;
-              });
-              toolResponses.push({
-                functionResponse: {
-                  name: fc.name,
-                  response: { content: responseContent },
-                },
-              });
-              if (onChunk)
-                onChunk("", `\n📅 Checked holidays for ${year}...\n`);
-            } else if (fc.name === "portfolio_tool") {
-              let data = null;
-              try {
-                if (fc.args.action.startsWith('read_')) {
-                  switch (fc.args.action) {
-                    case 'read_assets': data = await portfolioService.getAssets(); break;
-                    case 'read_positions': data = await portfolioService.getPositions(); break;
-                    case 'read_strategies': data = await portfolioService.getStrategies(); break;
-                    case 'read_performance': data = await portfolioService.getPerformance(); break;
-                    case 'read_historical': data = await portfolioService.getHistoricalPortfolioData(); break;
-                    case 'read_all': 
-                      data = {
-                        assets: await portfolioService.getAssets(),
-                        positions: await portfolioService.getPositions(),
-                        strategies: await portfolioService.getStrategies()
-                      };
-                      break;
-                  }
-                  toolResponses.push({
-                    functionResponse: {
-                      name: fc.name,
-                      response: { content: data ? JSON.stringify(data) : "No data found or error occurred." },
-                    },
-                  });
-                  if (onChunk)
-                    onChunk("", `\n🔍 Citit informații din portofoliu...\n`);
-                } else {
-                  let parsedPayload = fc.args.payload;
-                  try {
-                    if (typeof fc.args.payload === "string") {
-                      parsedPayload = JSON.parse(fc.args.payload);
+                  onChunk("", `\n📅 Checked holidays for ${year}...\n`);
+              } else if (fc.name === "portfolio_tool") {
+                let data = null;
+                try {
+                  if (fc.args.action.startsWith('read_')) {
+                    switch (fc.args.action) {
+                      case 'read_assets': data = await portfolioService.getAssets(); break;
+                      case 'read_positions': data = await portfolioService.getPositions(); break;
+                      case 'read_strategies': data = await portfolioService.getStrategies(); break;
+                      case 'read_performance': data = await portfolioService.getPerformance(); break;
+                      case 'read_historical': data = await portfolioService.getHistoricalPortfolioData(); break;
+                      case 'read_all':
+                        data = {
+                          assets: await portfolioService.getAssets(),
+                          positions: await portfolioService.getPositions(),
+                          strategies: await portfolioService.getStrategies()
+                        };
+                        break;
                     }
-                  } catch(e) {
-                    // fallback to string if parsing fails
-                  }
-                  pendingAction = {
-                    type: "complex_module_action",
-                    data: {
-                      module: "portfolio",
-                      action: fc.args.action,
-                      data: parsedPayload,
-                    },
-                    originalToolCallId: "gemini-fc",
-                  };
-                  toolResponses.push({
-                    functionResponse: {
-                      name: fc.name,
-                      response: {
-                        content: "Portfolio action pending user confirmation.",
+                    toolResponses.push({
+                      functionResponse: {
+                        name: fc.name,
+                        response: { content: data ? JSON.stringify(data) : "No data found or error occurred." },
                       },
-                    },
-                  });
-                  if (onChunk)
-                    onChunk("", `\n⚙️ Pregătit acțiune pentru portofoliu...\n`);
-                }
-              } catch (e) {
-                console.error("Error executing portfolio tool:", e);
-                toolResponses.push({
-                  functionResponse: {
-                    name: fc.name,
-                    response: { content: "Error occurred." },
-                  },
-                });
-              }
-            } else if (fc.name === "safe_digital_tool") {
-              let data = null;
-              try {
-                if (fc.args.action.startsWith('read_')) {
-                  switch (fc.args.action) {
-                    case 'read_documents': data = await safeDigitalService.getDocuments(); break;
-                    case 'read_notes': data = await safeDigitalService.getNotes(); break;
-                    case 'read_tasks': data = await safeDigitalService.getTasks(); break;
-                    case 'read_all':
-                      data = {
-                        documents: await safeDigitalService.getDocuments(),
-                        notes: await safeDigitalService.getNotes(),
-                        tasks: await safeDigitalService.getTasks()
-                      };
-                      break;
-                  }
-                  toolResponses.push({
-                    functionResponse: {
-                      name: fc.name,
-                      response: { content: data ? JSON.stringify(data) : "No data found or error occurred." },
-                    },
-                  });
-                  if (onChunk)
-                    onChunk("", `\n🔍 Citit informații din safe digital...\n`);
-                } else {
-                  let parsedPayload = fc.args.payload;
-                  try {
-                    if (typeof fc.args.payload === "string") {
-                      parsedPayload = JSON.parse(fc.args.payload);
-                    }
-                  } catch(e) {
-                    // fallback to string if parsing fails
-                  }
-                  pendingAction = {
-                    type: "complex_module_action",
-                    data: {
-                      module: "safe_digital",
-                      action: fc.args.action,
-                      data: parsedPayload,
-                    },
-                    originalToolCallId: "gemini-fc",
-                  };
-                  toolResponses.push({
-                    functionResponse: {
-                      name: fc.name,
-                      response: {
-                        content: "Safe Digital action pending user confirmation.",
-                      },
-                    },
-                  });
-                  if (onChunk)
-                    onChunk("", `\n⚙️ Pregătit acțiune pentru safe digital...\n`);
-                }
-              } catch (e) {
-                console.error("Error executing safe digital tool:", e);
-                toolResponses.push({
-                  functionResponse: {
-                    name: fc.name,
-                    response: { content: "Error occurred." },
-                  },
-                });
-              }
-            } else if (fc.name === "get_current_time") {
-              const now = new Date();
-              const timeString = now.toLocaleString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              });
-              toolResponses.push({
-                functionResponse: {
-                  name: fc.name,
-                  response: { content: timeString },
-                },
-              });
-              if (onChunk) onChunk("", `\n🕒 Time: ${timeString}...\n`);
-            } else if (fc.name === "workspace_tool") {
-              const action = fc.args.action;
-              const payload = fc.args.payload || {};
-              let responseContent = "";
-
-              if (action === "read_files") {
-                const filenames = (payload.filenames || []) as string[];
-                const requestedFiles = this.workspaceFiles.filter((f) =>
-                  filenames.includes(f.name),
-                );
-
-                if (requestedFiles.length > 0) {
-                  requestedFiles.forEach((f) => {
-                    responseContent += `\n[File: ${f.name}]\n${f.content}\n`;
-                  });
-                } else {
-                  responseContent =
-                    "Error: Requested files not found in workspace.";
-                }
-                if (onChunk)
-                  onChunk("", `\n📖 Citit ${filenames.length} fișiere din workspace...\n`);
-              } else if (action === "search_files") {
-                const queries = ((payload.queries || []) as string[]).map((q) =>
-                  q.toLowerCase(),
-                );
-                responseContent = `Search results for [${queries.join(", ")}] in workspace files:\n`;
-                let foundCount = 0;
-
-                this.workspaceFiles.forEach((f) => {
-                  if (!f.content) return;
-                  const lines = f.content.split("\n");
-                  lines.forEach((line, idx) => {
-                    const lowerLine = line.toLowerCase();
-                    if (queries.some((q) => lowerLine.includes(q))) {
-                      foundCount++;
-                      const start = Math.max(0, idx - 1);
-                      const end = Math.min(lines.length - 1, idx + 1);
-                      responseContent += `\n[File: ${f.name}, Line ${idx + 1}]\n`;
-                      for (let i = start; i <= end; i++) {
-                        responseContent += `${i === idx ? ">> " : "   "}${lines[i]}\n`;
+                    });
+                    if (onChunk)
+                      onChunk("", `\n🔍 Citit informații din portofoliu...\n`);
+                  } else {
+                    let parsedPayload = fc.args.payload;
+                    try {
+                      if (typeof fc.args.payload === "string") {
+                        parsedPayload = JSON.parse(fc.args.payload);
                       }
+                    } catch (e) {
+                      // fallback to string if parsing fails
                     }
+                    pendingAction = {
+                      type: "complex_module_action",
+                      data: {
+                        module: "portfolio",
+                        action: fc.args.action,
+                        data: parsedPayload,
+                      },
+                      originalToolCallId: "gemini-fc",
+                    };
+                    toolResponses.push({
+                      functionResponse: {
+                        name: fc.name,
+                        response: {
+                          content: "Portfolio action pending user confirmation.",
+                        },
+                      },
+                    });
+                    if (onChunk)
+                      onChunk("", `\n⚙️ Pregătit acțiune pentru portofoliu...\n`);
+                  }
+                } catch (e) {
+                  console.error("Error executing portfolio tool:", e);
+                  toolResponses.push({
+                    functionResponse: {
+                      name: fc.name,
+                      response: { content: "Error occurred." },
+                    },
                   });
+                }
+              } else if (fc.name === "safe_digital_tool") {
+                let data = null;
+                try {
+                  if (fc.args.action.startsWith('read_')) {
+                    switch (fc.args.action) {
+                      case 'read_documents': data = await safeDigitalService.getDocuments(); break;
+                      case 'read_notes': data = await safeDigitalService.getNotes(); break;
+                      case 'read_tasks': data = await safeDigitalService.getTasks(); break;
+                      case 'read_all':
+                        data = {
+                          documents: await safeDigitalService.getDocuments(),
+                          notes: await safeDigitalService.getNotes(),
+                          tasks: await safeDigitalService.getTasks()
+                        };
+                        break;
+                    }
+                    toolResponses.push({
+                      functionResponse: {
+                        name: fc.name,
+                        response: { content: data ? JSON.stringify(data) : "No data found or error occurred." },
+                      },
+                    });
+                    if (onChunk)
+                      onChunk("", `\n🔍 Citit informații din safe digital...\n`);
+                  } else {
+                    let parsedPayload = fc.args.payload;
+                    try {
+                      if (typeof fc.args.payload === "string") {
+                        parsedPayload = JSON.parse(fc.args.payload);
+                      }
+                    } catch (e) {
+                      // fallback to string if parsing fails
+                    }
+                    pendingAction = {
+                      type: "complex_module_action",
+                      data: {
+                        module: "safe_digital",
+                        action: fc.args.action,
+                        data: parsedPayload,
+                      },
+                      originalToolCallId: "gemini-fc",
+                    };
+                    toolResponses.push({
+                      functionResponse: {
+                        name: fc.name,
+                        response: {
+                          content: "Safe Digital action pending user confirmation.",
+                        },
+                      },
+                    });
+                    if (onChunk)
+                      onChunk("", `\n⚙️ Pregătit acțiune pentru safe digital...\n`);
+                  }
+                } catch (e) {
+                  console.error("Error executing safe digital tool:", e);
+                  toolResponses.push({
+                    functionResponse: {
+                      name: fc.name,
+                      response: { content: "Error occurred." },
+                    },
+                  });
+                }
+              } else if (fc.name === "get_current_time") {
+                const now = new Date();
+                const timeString = now.toLocaleString("en-US", {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
                 });
+                toolResponses.push({
+                  functionResponse: {
+                    name: fc.name,
+                    response: { content: timeString },
+                  },
+                });
+                if (onChunk) onChunk("", `\n🕒 Time: ${timeString}...\n`);
+              } else if (fc.name === "workspace_tool") {
+                const action = fc.args.action;
+                const payload = fc.args.payload || {};
+                let responseContent = "";
 
-                if (foundCount === 0)
-                  responseContent = `No matches found for any of the queries in workspace files.`;
-                if (onChunk)
-                  onChunk(
-                    "",
-                    `\n🔍 Căutat ${queries.length} termeni în workspace...\n`,
+                if (action === "read_files") {
+                  const filenames = (payload.filenames || []) as string[];
+                  const requestedFiles = this.workspaceFiles.filter((f) =>
+                    filenames.includes(f.name),
                   );
-              } else if (action === "get_map") {
-                responseContent = "WORKSPACE KNOWLEDGE BASE MAP:\n";
 
-                this.workspaceFiles.forEach((f) => {
-                  const snippet = (f.content || "")
-                    .substring(0, 500)
-                    .replace(/\n/g, " ");
-                  const sizeKb = Math.round((f.content?.length || 0) / 1024);
-
-                  responseContent += `\n- FILE: ${f.name} (${sizeKb} KB)\n`;
-                  responseContent += `  PREVIEW: ${snippet}...\n`;
-                  responseContent += `  CONTEXT: This file appears to contain ${f.mimeType || "text"} data. Use search to find specific entities.\n`;
-                });
-                if (onChunk)
-                  onChunk("", `\n🗺️ Mapat structura workspace-ului...\n`);
-              } else if (action === "semantic_search") {
-                const query = payload.query as string;
-                responseContent = `Semantic search results for "${query}":\n`;
-
-                const queryEmbedding = await this.generateEmbedding(query);
-
-                if (!queryEmbedding) {
-                  responseContent =
-                    "Error: Could not generate embedding for query.";
-                } else {
-                  const results = await this.searchInWorkspace(queryEmbedding);
-
-                  if (results.length > 0) {
-                    results.forEach((res, idx) => {
-                      responseContent += `\n[Result ${idx + 1} - File: ${res.filename} (Score: ${res.score.toFixed(2)})]\n${res.content}\n`;
+                  if (requestedFiles.length > 0) {
+                    requestedFiles.forEach((f) => {
+                      responseContent += `\n[File: ${f.name}]\n${f.content}\n`;
                     });
                   } else {
                     responseContent =
-                      "No semantically relevant information found.";
+                      "Error: Requested files not found in workspace.";
                   }
-                }
-                if (onChunk)
-                  onChunk("", `\n🧠 Căutare semantică: "${query}"...\n`);
-              }
+                  if (onChunk)
+                    onChunk("", `\n📖 Citit ${filenames.length} fișiere din workspace...\n`);
+                } else if (action === "search_files") {
+                  const queries = ((payload.queries || []) as string[]).map((q) =>
+                    q.toLowerCase(),
+                  );
+                  responseContent = `Search results for [${queries.join(", ")}] in workspace files:\n`;
+                  let foundCount = 0;
 
-              toolResponses.push({
-                functionResponse: {
-                  name: fc.name,
-                  response: { content: responseContent },
-                },
-              });
-            } else {
-              // Check if it's a dynamic skill
-              const availableSkills = skillManager.getAvailableSkills();
-              const skill = availableSkills.find(s => s.name === fc.name);
-              
-              if (skill) {
-                try {
-                  if (onChunk) onChunk("", `\n⚙️ Executing skill: ${skill.name}...\n`);
-                  const result = await skillManager.executeSkill(skill.id, fc.args);
-                  toolResponses.push({
-                    functionResponse: {
-                      name: fc.name,
-                      response: { content: JSON.stringify(result) },
-                    },
+                  this.workspaceFiles.forEach((f) => {
+                    if (!f.content) return;
+                    const lines = f.content.split("\n");
+                    lines.forEach((line, idx) => {
+                      const lowerLine = line.toLowerCase();
+                      if (queries.some((q) => lowerLine.includes(q))) {
+                        foundCount++;
+                        const start = Math.max(0, idx - 1);
+                        const end = Math.min(lines.length - 1, idx + 1);
+                        responseContent += `\n[File: ${f.name}, Line ${idx + 1}]\n`;
+                        for (let i = start; i <= end; i++) {
+                          responseContent += `${i === idx ? ">> " : "   "}${lines[i]}\n`;
+                        }
+                      }
+                    });
                   });
-                } catch (error: any) {
-                  toolResponses.push({
-                    functionResponse: {
-                      name: fc.name,
-                      response: { content: `Error executing skill: ${error.message}` },
-                    },
+
+                  if (foundCount === 0)
+                    responseContent = `No matches found for any of the queries in workspace files.`;
+                  if (onChunk)
+                    onChunk(
+                      "",
+                      `\n🔍 Căutat ${queries.length} termeni în workspace...\n`,
+                    );
+                } else if (action === "get_map") {
+                  responseContent = "WORKSPACE KNOWLEDGE BASE MAP:\n";
+
+                  this.workspaceFiles.forEach((f) => {
+                    const snippet = (f.content || "")
+                      .substring(0, 500)
+                      .replace(/\n/g, " ");
+                    const sizeKb = Math.round((f.content?.length || 0) / 1024);
+
+                    responseContent += `\n- FILE: ${f.name} (${sizeKb} KB)\n`;
+                    responseContent += `  PREVIEW: ${snippet}...\n`;
+                    responseContent += `  CONTEXT: This file appears to contain ${f.mimeType || "text"} data. Use search to find specific entities.\n`;
                   });
+                  if (onChunk)
+                    onChunk("", `\n🗺️ Mapat structura workspace-ului...\n`);
+                } else if (action === "semantic_search") {
+                  const query = payload.query as string;
+                  responseContent = `Semantic search results for "${query}":\n`;
+
+                  const queryEmbedding = await this.generateEmbedding(query);
+
+                  if (!queryEmbedding) {
+                    responseContent =
+                      "Error: Could not generate embedding for query.";
+                  } else {
+                    const results = await this.searchInWorkspace(queryEmbedding);
+
+                    if (results.length > 0) {
+                      results.forEach((res, idx) => {
+                        responseContent += `\n[Result ${idx + 1} - File: ${res.filename} (Score: ${res.score.toFixed(2)})]\n${res.content}\n`;
+                      });
+                    } else {
+                      responseContent =
+                        "No semantically relevant information found.";
+                    }
+                  }
+                  if (onChunk)
+                    onChunk("", `\n🧠 Căutare semantică: "${query}"...\n`);
                 }
-              } else {
-                console.warn(`Unknown function call: ${fc.name}`);
+
                 toolResponses.push({
                   functionResponse: {
                     name: fc.name,
-                    response: { content: "Error: Unknown function." },
+                    response: { content: responseContent },
                   },
                 });
+              } else {
+                // Check if it's a dynamic skill
+                const availableSkills = skillManager.getAvailableSkills();
+                const skill = availableSkills.find(s => s.name === fc.name);
+
+                if (skill) {
+                  try {
+                    if (onChunk) onChunk("", `\n⚙️ Executing skill: ${skill.name}...\n`);
+                    const result = await skillManager.executeSkill(skill.id, fc.args);
+                    toolResponses.push({
+                      functionResponse: {
+                        name: fc.name,
+                        response: { content: JSON.stringify(result) },
+                      },
+                    });
+                  } catch (error: any) {
+                    toolResponses.push({
+                      functionResponse: {
+                        name: fc.name,
+                        response: { content: `Error executing skill: ${error.message}` },
+                      },
+                    });
+                  }
+                } else {
+                  console.warn(`Unknown function call: ${fc.name}`);
+                  toolResponses.push({
+                    functionResponse: {
+                      name: fc.name,
+                      response: { content: "Error: Unknown function." },
+                    },
+                  });
+                }
               }
             }
-          }
 
-          if (pendingAction) {
+            if (pendingAction) {
+              break;
+            }
+
+            currentMessage = toolResponses;
+            turns++;
+            if (onChunk)
+              onChunk(
+                "",
+                `\n⚙️ Executat ${functionCalls.length} operațiuni...\n`,
+              );
+          } else {
             break;
           }
 
-          currentMessage = toolResponses;
-          turns++;
-          if (onChunk)
-            onChunk(
-              "",
-              `\n⚙️ Executat ${functionCalls.length} operațiuni...\n`,
-            );
-        } else {
-          break;
+          clearTimeout(timeoutId);
+          if (this.abortController) {
+            this.abortController.signal.removeEventListener('abort', onUserAbort);
+          }
+        } catch (e) {
+          clearTimeout(timeoutId);
+          if (this.abortController) {
+            this.abortController.signal.removeEventListener('abort', onUserAbort);
+          }
+          throw e;
         }
-        
-        clearTimeout(timeoutId);
-        if (this.abortController) {
-          this.abortController.signal.removeEventListener('abort', onUserAbort);
-        }
-      } catch (e) {
-        clearTimeout(timeoutId);
-        if (this.abortController) {
-          this.abortController.signal.removeEventListener('abort', onUserAbort);
-        }
-        throw e;
-      }
       }
 
       const { cleanText, questions } =
@@ -2484,9 +2484,9 @@ export class LLMService {
     // 2. Prepare Tools
     const tools = [];
     if (useSearch && searchApiKey) tools.push(searchToolGeneric);
-    
+
     const dynamicSkillsGeneric = skillManager.getAvailableSkills().map(skill => skillManager.getGenericTool(skill));
-    
+
     tools.push(
       libraryToolGeneric,
       calendarToolGeneric,
@@ -2555,11 +2555,11 @@ export class LLMService {
         let response: Response;
         let retryCount = 0;
         const maxRetries = 3;
-        
+
         while (true) {
           const fetchController = new AbortController();
           const timeoutId = setTimeout(() => fetchController.abort(), 120000); // 120s timeout per turn
-          
+
           const onUserAbort = () => fetchController.abort();
           if (this.abortController) {
             this.abortController.signal.addEventListener('abort', onUserAbort);
@@ -2571,7 +2571,7 @@ export class LLMService {
             body: JSON.stringify(body),
             signal: fetchController.signal,
           });
-          
+
           clearTimeout(timeoutId);
           if (this.abortController) {
             this.abortController.signal.removeEventListener('abort', onUserAbort);
@@ -2585,7 +2585,7 @@ export class LLMService {
           }
           break;
         }
-        
+
         if (!response.ok) {
           const errText = await response.text();
           throw new Error(`API Error ${response.status}: ${errText}`);
@@ -2601,7 +2601,7 @@ export class LLMService {
           if (data.error) {
             throw new Error(data.error.message || JSON.stringify(data.error));
           }
-          
+
           const choice = data.choices?.[0];
           if (choice) {
             const msg = choice.message;
@@ -2837,7 +2837,7 @@ export class LLMService {
             } else if (toolCall.function.name === "library_tool") {
               const action = args.action;
               const payload = args.payload || {};
-              
+
               if (action === "save_page") {
                 pendingAction = {
                   type: payload.action === "update" ? "update_page" : "create_page",
@@ -2978,7 +2978,7 @@ export class LLMService {
                     case 'read_strategies': data = await portfolioService.getStrategies(); break;
                     case 'read_performance': data = await portfolioService.getPerformance(); break;
                     case 'read_historical': data = await portfolioService.getHistoricalPortfolioData(); break;
-                    case 'read_all': 
+                    case 'read_all':
                       data = {
                         assets: await portfolioService.getAssets(),
                         positions: await portfolioService.getPositions(),
@@ -3242,7 +3242,7 @@ export class LLMService {
     if (customApiKey) {
       try {
         clientToUse = new GoogleGenAI({ apiKey: customApiKey });
-      } catch (e) {}
+      } catch (e) { }
     }
     if (!clientToUse || !text.trim()) return null;
 
@@ -3270,10 +3270,10 @@ export class LLMService {
     } catch (e: any) {
       const errorString = String(e?.message || e);
       if (errorString.includes("429") || errorString.includes("RESOURCE_EXHAUSTED")) {
-         // Silently fail for Quota limits, as App.tsx handles this gracefully 
-         // with a fallback to the native browser TTS.
+        // Silently fail for Quota limits, as App.tsx handles this gracefully 
+        // with a fallback to the native browser TTS.
       } else {
-         console.error("TTS Error:", e);
+        console.error("TTS Error:", e);
       }
       return null;
     }
