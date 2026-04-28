@@ -1,0 +1,36 @@
+name: Capgo OTA Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'ui/hermes-agent-integration/**' # Se declanșează doar când se modifică interfața
+  workflow_dispatch: # Permite rularea manuală
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui/hermes-agent-integration
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Web App
+        run: npm run build
+
+      - name: Upload to Capgo
+        run: npm run capgo:upload
+        env:
+          CAPGO_TOKEN: ${{ secrets.CAPGO_TOKEN }}

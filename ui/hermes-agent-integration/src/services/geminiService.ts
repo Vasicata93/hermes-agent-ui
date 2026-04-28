@@ -212,7 +212,7 @@ const portfolioToolGemini: FunctionDeclaration = {
 const safeDigitalToolGemini: FunctionDeclaration = {
   name: "safe_digital_tool",
   description:
-    "Gestionează seiful digital (Safe Digital) al utilizatorului. Folosește acest tool pentru a citi informații ('read_documents', 'read_notes', 'read_tasks') sau pentru a gestiona fișierele ('add_document', 'update_document', 'delete_document').",
+    "Gestionează seiful digital (Safe Digital) al utilizatorului. Folosește acest tool pentru a citi informații ('read_documents', 'read_notes', 'read_tasks') sau pentru a gestiona date sensibile, documente, credențiale și chei API ('add_document', 'update_document', 'delete_document').",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -284,7 +284,7 @@ const safeDigitalToolGeneric = {
   function: {
     name: "safe_digital_tool",
     description:
-      "Gestionează seiful digital (Safe Digital) al utilizatorului. Folosește acest tool pentru a citi informații ('read_documents', 'read_notes', 'read_tasks') sau pentru a gestiona fișierele ('add_document', 'update_document', 'delete_document').",
+      "Gestionează seiful digital (Safe Digital) al utilizatorului. Folosește acest tool pentru a citi informații ('read_documents', 'read_notes', 'read_tasks') sau pentru a gestiona date sensibile, documente, credențiale și chei API ('add_document', 'update_document', 'delete_document').",
     parameters: {
       type: "object",
       properties: {
@@ -678,12 +678,18 @@ export class LLMService {
     if (enableMemory) {
       await MemoryService.addToBuffer("model", responseText);
       const buffer = await MemoryService.getBuffer();
+      const lowerPrompt = prompt.toLowerCase();
       const shouldConsolidate =
         buffer.length >= 5 ||
-        prompt.toLowerCase().includes("remember this") ||
-        prompt.toLowerCase().includes("salvează");
+        lowerPrompt.includes("remember this") ||
+        lowerPrompt.includes("salvează") ||
+        lowerPrompt.includes("api key") ||
+        lowerPrompt.includes("cheie api") ||
+        lowerPrompt.includes("conector") ||
+        lowerPrompt.includes("skill");
       if (shouldConsolidate) {
-        this.runConsolidation(geminiApiKey);
+        // Conform ARCHITECTURE.md 10.1, actualizările critice de memorie trebuie să fie SYNC.
+        await this.runConsolidation(geminiApiKey);
       }
     }
   }
@@ -1531,15 +1537,15 @@ export class LLMService {
         
         RULES:
         1. IGNORE casual conversation, greetings, simple questions, and transient thoughts.
-        2. ONLY extract *permanent* facts: User preferences, specific project details/status, learned skills, or important life events.
+        2. ONLY extract *permanent* facts: User preferences, API keys, connector configurations, integration settings, learned skills, or important life events.
         3. DO NOT save "User asked about..." or "User wants to know...". Save the underlying interest ONLY if it seems like a long-term hobby/goal.
         4. If the buffer contains only noise, return empty arrays.
         5. CRITICAL: The "category" string in new_facts MUST BE EXACTLY one of the following 10 values:
            - "about_me": Basic personal info, identity, general details.
-           - "preferences": Rules for AI interaction, style, formatting choices, moral values.
+           - "preferences": Rules for AI interaction, style, formatting choices, moral values, and integration settings/API keys.
            - "work": Career, job specifics, professional life.
            - "coding_projects": Tech stack, programming, bug solutions, active development projects.
-           - "learning_goals": Things the user is currently learning, roadmaps, personal/professional goals.
+           - "learning_goals": Things the user is currently learning, roadmaps, personal/professional goals, and new skills or capabilities.
            - "relationships": Family, friends, mentions of other people.
            - "health_lifestyle": Diet, sleep, workouts, physical/mental wellbeing tracking.
            - "hobbies_interests": Travel, movies, books, games, free-time activities.

@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { IConnector, ConnectorCredential } from '../../types/integration';
 import { useIntegrationStore } from '../../store/integrationStore';
+import { HermesApiClient } from '../hermes/hermesApiClient';
 
 class ConnectorManager {
   private static instance: ConnectorManager;
@@ -48,6 +49,25 @@ class ConnectorManager {
     try {
       await db.connectors.put(credentials);
       useIntegrationStore.getState().updateConnectorStatus(credentials.connectorId, 'connected');
+
+      // SYNC TO BACKEND
+      const ENV_MAP: Record<string, string> = {
+        'github': 'GITHUB_TOKEN',
+        'vercel': 'VERCEL_TOKEN',
+        'google_workspace': 'GOOGLE_API_KEY',
+        'tavily': 'TAVILY_API_KEY',
+        'brave': 'BRAVE_API_KEY',
+        'elevenlabs': 'ELEVENLABS_API_KEY',
+      };
+
+      const envKey = ENV_MAP[credentials.connectorId] || credentials.connectorId.toUpperCase() + '_API_KEY';
+      
+      const tokenToSync = credentials.apiKey || credentials.accessToken;
+      if (tokenToSync) {
+        await HermesApiClient.setEnv(envKey, tokenToSync).catch(err => {
+            console.error(`Failed to sync connector key ${envKey} to backend`, err);
+        });
+      }
     } catch (error) {
       console.error(`Failed to save credentials for ${credentials.connectorId}`, error);
       throw error;
@@ -68,6 +88,19 @@ class ConnectorManager {
     try {
       await db.connectors.delete(connectorId);
       useIntegrationStore.getState().updateConnectorStatus(connectorId, 'disconnected');
+      
+      const ENV_MAP: Record<string, string> = {
+        'github': 'GITHUB_TOKEN',
+        'vercel': 'VERCEL_TOKEN',
+        'google_workspace': 'GOOGLE_API_KEY',
+        'tavily': 'TAVILY_API_KEY',
+        'brave': 'BRAVE_API_KEY',
+        'elevenlabs': 'ELEVENLABS_API_KEY',
+      };
+      const envKey = ENV_MAP[connectorId] || connectorId.toUpperCase() + '_API_KEY';
+      await HermesApiClient.setEnv(envKey, "").catch(err => {
+         console.error(`Failed to clear connector key ${envKey} in backend`, err);
+      });
     } catch (error) {
       console.error(`Failed to disconnect ${connectorId}`, error);
       throw error;

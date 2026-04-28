@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*' # Se declanșează la push-ul unui tag de versiune (ex: v1.0.0)
+  workflow_dispatch: # Permite rularea manuală din GitHub Actions tab
 
 permissions:
   contents: write # Permite crearea release-ului și upload-ul artefactelor
@@ -14,8 +15,12 @@ jobs:
 
     strategy:
       matrix:
-        # Construim pentru Windows și macOS (și Linux dacă este necesar)
+        # Construim pentru Windows și macOS
         os: [windows-latest, macos-latest]
+
+    defaults:
+      run:
+        working-directory: desktop
 
     steps:
       - name: Checkout Code
@@ -25,21 +30,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install Dependencies
         run: npm install
 
       - name: Build Electron App
-        run: npm run build # Asigură-te că ai un script de build pentru frontend
+        run: npm run build
 
       - name: Build and Publish Electron
-        # Comanda menționată de tine, rulată automat în CI
         run: npx electron-builder --publish always
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Notă: Pentru macOS, vei avea nevoie de certificate (CSC_LINK, CSC_KEY_PASSWORD) 
-          # pentru a semna aplicația, altfel va fi marcată ca "untrusted".
+          # Pentru macOS, vei avea nevoie de certificate pentru a semna aplicația
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

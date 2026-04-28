@@ -400,7 +400,8 @@ function registerIpcHandlers(pythonManager2) {
         body: JSON.stringify({
           message: args.message,
           session_id: args.sessionId,
-          agent_mode: args.agentMode || false
+          agent_mode: args.agentMode || false,
+          settings: args.settings
         })
       });
       return await response.json();

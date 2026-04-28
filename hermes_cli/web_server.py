@@ -106,6 +106,9 @@ _PUBLIC_API_PATHS: frozenset = frozenset({
     "/api/dashboard/themes",
     "/api/dashboard/plugins",
     "/api/dashboard/plugins/rescan",
+    "/api/env",
+    "/api/chat",
+    "/api/memory",
 })
 
 
@@ -2218,12 +2221,18 @@ async def chat_endpoint(request: ChatMessageRequest):
     if provider == "gemini":
         model = settings.get("geminiModelId") or config.get("model", "gemini-1.5-pro")
         api_key = settings.get("geminiApiKey") or os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=401, detail="Gemini API key is missing. Please enter it in Settings > Models.")
     elif provider == "openrouter":
         model = settings.get("openRouterModelId") or config.get("model", "anthropic/claude-3.5-sonnet")
         api_key = settings.get("openRouterApiKey") or os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=401, detail="OpenRouter API key is missing. Please enter it in Settings > Models.")
     elif provider == "openai":
         model = settings.get("openAiModelId") or config.get("model", "gpt-4o")
         api_key = settings.get("openAiApiKey") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=401, detail="OpenAI API key is missing. Please enter it in Settings > Models.")
     elif provider == "local":
         model = settings.get("activeLocalModelId") or config.get("model", "")
         base_url = "http://localhost:11434/v1" # Default for local/ollama

@@ -1396,6 +1396,18 @@ function App() {
   };
 
   const handleUpdateSettings = (newSettings: Partial<AppSettings>) => {
+    // Map frontend setting keys to backend .env variable names
+    const API_KEY_TO_ENV: Record<string, string> = {
+      geminiApiKey: "GEMINI_API_KEY",
+      openRouterApiKey: "OPENROUTER_API_KEY",
+      openAiApiKey: "OPENAI_API_KEY",
+      elevenLabsApiKey: "ELEVENLABS_API_KEY",
+      openaiVoiceApiKey: "OPENAI_API_KEY",
+      tavilyApiKey: "TAVILY_API_KEY",
+      braveApiKey: "BRAVE_API_KEY",
+    };
+
+    // Sync changed API keys to backend .env
     setSettings((prev) => {
       const updated = { ...prev };
       for (const key in newSettings) {
@@ -1404,6 +1416,17 @@ function App() {
           updated[key] = { ...prev[key], ...newSettings[key] };
         } else {
           updated[key] = newSettings[key];
+        }
+
+        // If this key is an API key and the value changed, persist to backend .env
+        const envVarName = API_KEY_TO_ENV[key];
+        if (envVarName && newSettings[key] !== prev[key] && typeof newSettings[key] === "string") {
+          const value = newSettings[key] as string;
+          if (value.trim()) {
+            HermesApiClient.setEnv(envVarName, value).catch((err) =>
+              console.error(`Failed to save ${envVarName} to backend:`, err)
+            );
+          }
         }
       }
       return updated;

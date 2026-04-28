@@ -8,7 +8,8 @@
     "lint": "tsc --noEmit",
     "cap:sync": "npx cap sync",
     "cap:open": "npx cap open android",
-    "cap:build": "npm run build && npx cap sync"
+    "cap:build": "npm run build && npx cap sync",
+    "capgo:upload": "capgo upload -a com.perplex.clone -c production"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

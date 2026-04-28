@@ -8,6 +8,11 @@
   "plugins": {
     "SplashScreen": {
       "launchShowDuration": 0
+    },
+    "CapacitorUpdater": {
+      "autoUpdate": true,
+      "channel": "production",
+      "resetWhenUpdate": false
     }
   }
 }
