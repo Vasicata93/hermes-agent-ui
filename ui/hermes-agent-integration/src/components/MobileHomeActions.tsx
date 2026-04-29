@@ -31,14 +31,6 @@ export const MobileHomeActions: React.FC<MobileHomeActionsProps> = ({
         <CheckCircle size={16} />
       </button>
 
-      {/* Dashboard */}
-      <button
-        className={`w-9 h-9 flex items-center justify-center rounded-2xl transition-all ${activeView === "dashboard" ? "bg-pplx-accent text-white shadow-md shadow-pplx-accent/20" : "text-pplx-text hover:bg-white/10"}`}
-        onClick={() => setActiveView("dashboard")}
-      >
-        <LayoutDashboard size={16} />
-      </button>
-
       {/* Calendar */}
       <button
         className={`w-9 h-9 flex items-center justify-center rounded-2xl transition-all ${activeView === "calendar" ? "bg-pplx-accent text-white shadow-md shadow-pplx-accent/20" : "text-pplx-text hover:bg-white/10"}`}

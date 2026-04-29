@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ChevronDown,
   LayoutGrid,
+  LayoutDashboard,
   MessageSquareText,
   Plus,
   Trash2,
@@ -425,6 +426,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </div>
             
+            {/* Dashboard */}
+            <div className="flex flex-col w-full">
+              <NavItem
+                icon={<LayoutDashboard size={20} />}
+                label="System Dashboard"
+                onClick={() => {
+                  onChangeView("dashboard");
+                }}
+                active={activeView === "dashboard"}
+                isCollapsed={isCollapsed}
+              />
+            </div>
             
             {/* Spaces Accordion (Moved above Library) */}
             <div
