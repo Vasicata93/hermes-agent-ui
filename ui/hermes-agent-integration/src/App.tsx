@@ -84,6 +84,7 @@ import { v4 as uuidv4 } from "uuid";
 import { portfolioService } from "./services/portfolioService";
 import { safeDigitalService } from "./services/safeDigitalService";
 import { semanticRouter } from "./services/agent/SemanticRouter";
+import { SetupWizard } from "./components/SetupWizard";
 
 // --- End of imports ---
 import { Toaster } from 'react-hot-toast';
@@ -117,6 +118,11 @@ function App() {
   });
   const [isSpaceFilesModalOpen, setIsSpaceFilesModalOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+
+  // Setup Wizard State
+  const [isSetupComplete, setIsSetupComplete] = useState(() => {
+    return localStorage.getItem("pplx_setupComplete") === "true";
+  });
 
   const handleOpenSidebar = () => {
     if (window.innerWidth >= 768) {
