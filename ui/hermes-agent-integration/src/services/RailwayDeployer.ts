@@ -88,10 +88,12 @@ export class RailwayDeployer {
           serviceId: $serviceId
           environmentId: $environmentId
           input: {
-            startCommand: "python gateway/run.py",
-            rootDirectory: "/hermes_cli"
+            startCommand: "hermes dashboard --host 0.0.0.0 --port $PORT --insecure --no-open --tui",
+            rootDirectory: "/"
           }
-        )
+        ) {
+          id
+        }
       }
     `;
     await this.request(query, { serviceId, environmentId });
