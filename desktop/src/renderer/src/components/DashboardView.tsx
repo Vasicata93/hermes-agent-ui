@@ -1,5 +1,5 @@
 import React from "react";
-import { Brain, Server, Shield, Zap, CheckCircle, Database, Activity, Clock, FileText, Bot, Sliders, Webhook, Lock, Save, Play, Square, RotateCcw, Settings, ToggleLeft, ToggleRight } from "lucide-react";
+import { Brain, Server, Shield, Zap, CheckCircle, Database, Activity, Clock, FileText, Bot, Sliders, Webhook, Lock, Save, Play, Square, RotateCcw, Settings, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 const tokenUsageData = [
@@ -23,10 +23,19 @@ interface DashboardViewProps {
   onClose?: () => void;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = () => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onClose }) => {
   return (
     <div className="flex flex-col h-full w-full p-6 md:p-12 animate-fadeIn max-w-7xl mx-auto text-pplx-text font-sans">
-      <div className="flex flex-col mb-8 md:flex-row justify-between items-start md:items-end border-b border-pplx-border/50 pb-6 shadow-sm">
+      <div className="flex flex-col mb-8 md:flex-row justify-between items-start md:items-end border-b border-pplx-border/50 pb-6 shadow-sm relative">
+        {onClose && (
+          <button 
+            onClick={onClose}
+            className="absolute top-0 right-0 p-2 text-pplx-muted hover:text-pplx-text transition-colors"
+            title="Close Dashboard"
+          >
+            <X size={24} />
+          </button>
+        )}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-10 h-10 rounded-xl bg-pplx-accent/20 flex items-center justify-center border border-pplx-accent/30 shadow-[0_0_15px_rgba(37,99,235,0.2)]">

@@ -183,10 +183,7 @@ function App() {
     | "agent"
   >("chat");
 
-  // Update isDashboardMode based on activeView
-  useEffect(() => {
-    setIsDashboardMode(activeView === "portfolio");
-  }, [activeView]);
+  // isDashboardMode is now purely for the temporary overlay (triggered from model messages)
 
   const viewToRender =
     activeView === "search" ? previousViewBeforeSearch : activeView;
