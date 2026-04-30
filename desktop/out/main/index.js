@@ -1,4 +1,26 @@
 "use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 const electron = require("electron");
 const path = require("path");
 const utils = require("@electron-toolkit/utils");
@@ -6,6 +28,26 @@ const child_process = require("child_process");
 const fs = require("fs");
 const net = require("net");
 const electronUpdater = require("electron-updater");
+const os = require("os");
+const promises = require("stream/promises");
+const stream = require("stream");
+function _interopNamespaceDefault(e) {
+  const n = Object.create(null, { [Symbol.toStringTag]: { value: "Module" } });
+  if (e) {
+    for (const k in e) {
+      if (k !== "default") {
+        const d = Object.getOwnPropertyDescriptor(e, k);
+        Object.defineProperty(n, k, d.get ? d : {
+          enumerable: true,
+          get: () => e[k]
+        });
+      }
+    }
+  }
+  n.default = e;
+  return Object.freeze(n);
+}
+const os__namespace = /* @__PURE__ */ _interopNamespaceDefault(os);
 const HERMES_DATA_DIR = path.join(electron.app.getPath("userData"), "hermes-data");
 const VENV_DIR = path.join(HERMES_DATA_DIR, "venv");
 const HERMES_HOME = path.join(electron.app.getPath("home"), ".hermes");
@@ -322,7 +364,7 @@ class PythonManager {
     return !fs.existsSync(this.getPythonPath());
   }
 }
-function registerIpcHandlers(pythonManager2) {
+function registerIpcHandlers(pythonManager2, modelManager2) {
   electron.ipcMain.handle("hermes:api-request", async (_event, args) => {
     const baseUrl = pythonManager2.getBaseUrl();
     const url = `${baseUrl}${args.endpoint}`;
@@ -507,6 +549,76 @@ function registerIpcHandlers(pythonManager2) {
   electron.ipcMain.handle("hermes:install-update", () => {
     electronUpdater.autoUpdater.quitAndInstall();
   });
+  electron.ipcMain.handle("hermes:get-system-info", async () => {
+    return {
+      totalMemory: os.totalmem(),
+      freeMemory: os.freemem(),
+      platform: os.platform(),
+      arch: os.arch(),
+      cpus: os.cpus().length
+    };
+  });
+  electron.ipcMain.handle("models:catalog", () => {
+    return modelManager2.getCatalog();
+  });
+  electron.ipcMain.handle("models:sys-resources", () => {
+    return modelManager2.getSystemResources();
+  });
+  electron.ipcMain.handle("models:download", async (event, args) => {
+    const window = electron.BrowserWindow.fromWebContents(event.sender);
+    if (!window) return { ok: false, error: "No window found" };
+    try {
+      modelManager2.downloadModel(args.id, window).catch((e) => console.error("Download model error:", e));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+  electron.ipcMain.handle("models:stop-download", (_event, args) => {
+    modelManager2.stopDownload(args.id);
+    return { ok: true };
+  });
+  electron.ipcMain.handle("models:start-runtime", async (event, args) => {
+    const window = electron.BrowserWindow.fromWebContents(event.sender);
+    if (!window) return { ok: false, error: "No window found" };
+    try {
+      await modelManager2.startRuntime(args.id, window);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+  electron.ipcMain.handle("models:stop-runtime", async (event) => {
+    const window = electron.BrowserWindow.fromWebContents(event.sender);
+    try {
+      await modelManager2.stopRuntime(window);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+  electron.ipcMain.handle("models:prompt", async (event, args) => {
+    const window = electron.BrowserWindow.fromWebContents(event.sender);
+    if (!window) return { ok: false, error: "No window" };
+    try {
+      const response = await modelManager2.promptModel(args.message, (token) => {
+        window.webContents.send("models:token", { token });
+      });
+      return { ok: true, text: response };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+  electron.ipcMain.handle("models:delete", async (event, id) => {
+    const window = electron.BrowserWindow.fromWebContents(event.sender);
+    if (!window) return { ok: false, error: "No window found" };
+    try {
+      await modelManager2.deleteModel(id, window);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
 }
 function setupAutoUpdater(mainWindow2) {
   electronUpdater.autoUpdater.autoDownload = false;
@@ -575,9 +687,269 @@ function setupAutoUpdater(mainWindow2) {
     electronUpdater.autoUpdater.checkForUpdates().catch(console.error);
   }, 4 * 60 * 60 * 1e3);
 }
+let LlamaCpp = null;
+const MODELS_DIR = path.join(electron.app.getPath("userData"), "hermes-models");
+const CATALOG = [
+  {
+    id: "llama-3-8b-instruct",
+    name: "Llama-3 8B Instruct (Q4_K_M)",
+    description: "A fast, highly capable 8B model perfect for general tasks and coding.",
+    sizeMB: 4920,
+    minRamMB: 8e3,
+    url: "https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf",
+    filename: "Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"
+  },
+  {
+    id: "phi-3-mini-4k",
+    name: "Phi-3 Mini 4k (Q4_K_M)",
+    description: "Microsofts extremely lightweight and fast 3.8B model, ideal for older hardware.",
+    sizeMB: 2390,
+    minRamMB: 4e3,
+    url: "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf",
+    filename: "Phi-3-mini-4k-instruct-q4.gguf"
+  },
+  {
+    id: "mistral-7b-v0.2",
+    name: "Mistral 7B Instruct v0.2 (Q4_K_M)",
+    description: "A well-rounded, powerful 7B model by Mistral AI.",
+    sizeMB: 4370,
+    minRamMB: 8e3,
+    url: "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+    filename: "mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+  }
+];
+class ModelManager {
+  activeDownloads = /* @__PURE__ */ new Map();
+  installStatus = /* @__PURE__ */ new Map();
+  activeLlama = null;
+  // getLlama() instance
+  activeModel = null;
+  // LlamaModel instance
+  activeContext = null;
+  // LlamaContext instance
+  activeChatSession = null;
+  // LlamaChatSession instance
+  activeModelId = null;
+  constructor() {
+    if (!fs.existsSync(MODELS_DIR)) {
+      fs.mkdirSync(MODELS_DIR, { recursive: true });
+    }
+    this.refreshLocalState();
+  }
+  /**
+   * Initializes node-llama-cpp (it's ESM so we must await import)
+   */
+  async initLlama() {
+    if (!LlamaCpp) {
+      try {
+        const module2 = await import("node-llama-cpp");
+        LlamaCpp = module2;
+      } catch (err) {
+        console.error("Failed to load node-llama-cpp", err);
+      }
+    }
+  }
+  /**
+   * Scan the directory for downloaded models and update state
+   */
+  async refreshLocalState() {
+    const files = fs.existsSync(MODELS_DIR) ? await fs.promises.readdir(MODELS_DIR) : [];
+    for (const entry of CATALOG) {
+      const isDownloaded = files.includes(entry.filename);
+      if (isDownloaded) {
+        const stats = await fs.promises.stat(path.join(MODELS_DIR, entry.filename));
+        if (stats.size > entry.sizeMB * 1024 * 1e3) {
+          this.installStatus.set(entry.id, {
+            id: entry.id,
+            status: this.activeModelId === entry.id ? "active" : "installed",
+            progress: 100,
+            path: path.join(MODELS_DIR, entry.filename)
+          });
+          continue;
+        }
+      }
+      if (this.installStatus.get(entry.id)?.status === "downloading") {
+        continue;
+      }
+      this.installStatus.set(entry.id, {
+        id: entry.id,
+        status: "uninstalled",
+        progress: 0
+      });
+    }
+  }
+  getCatalog() {
+    return CATALOG.map((entry) => ({
+      ...entry,
+      ...this.installStatus.get(entry.id)
+    }));
+  }
+  getSystemResources() {
+    return {
+      totalRamMB: Math.round(os__namespace.totalmem() / 1024 / 1024),
+      freeRamMB: Math.round(os__namespace.freemem() / 1024 / 1024),
+      platform: os__namespace.platform(),
+      arch: os__namespace.arch()
+    };
+  }
+  async downloadModel(id, window) {
+    const entry = CATALOG.find((e) => e.id === id);
+    if (!entry) throw new Error("Model not found");
+    if (this.activeDownloads.has(id)) {
+      throw new Error("Already downloading");
+    }
+    const destPath = path.join(MODELS_DIR, entry.filename);
+    const controller = new AbortController();
+    this.activeDownloads.set(id, controller);
+    this.installStatus.set(id, { id, status: "downloading", progress: 0 });
+    this.broadcastStatus(window);
+    try {
+      const response = await fetch(entry.url, { signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.body) throw new Error("No body in response");
+      const totalBytes = Number(response.headers.get("content-length"));
+      let downloadedBytes = 0;
+      const fileStream = fs.createWriteStream(destPath);
+      const readableNode = stream.Readable.fromWeb(response.body);
+      readableNode.on("data", (chunk) => {
+        downloadedBytes += chunk.length;
+        if (totalBytes) {
+          const progress = Math.round(downloadedBytes / totalBytes * 100);
+          const currentStatus = this.installStatus.get(id);
+          if (currentStatus && currentStatus.progress !== progress && progress % 2 === 0) {
+            currentStatus.progress = progress;
+            this.broadcastStatus(window);
+          }
+        }
+      });
+      await promises.pipeline(readableNode, fileStream);
+      this.installStatus.set(id, { id, status: "installed", progress: 100, path: destPath });
+      this.activeDownloads.delete(id);
+      this.broadcastStatus(window);
+    } catch (err) {
+      this.activeDownloads.delete(id);
+      if (err.name === "AbortError") {
+        this.installStatus.set(id, { id, status: "uninstalled", progress: 0 });
+        if (fs.existsSync(destPath)) await fs.promises.unlink(destPath);
+      } else {
+        console.error("Download failed", err);
+        this.installStatus.set(id, { id, status: "uninstalled", progress: 0 });
+        if (fs.existsSync(destPath)) await fs.promises.unlink(destPath);
+      }
+      this.broadcastStatus(window);
+      throw err;
+    }
+  }
+  stopDownload(id) {
+    const controller = this.activeDownloads.get(id);
+    if (controller) {
+      controller.abort();
+      this.activeDownloads.delete(id);
+    }
+  }
+  async startRuntime(id, window) {
+    const entry = CATALOG.find((e) => e.id === id);
+    if (!entry) throw new Error("Model not found");
+    const status = this.installStatus.get(id);
+    if (!status || status.status !== "installed") {
+      throw new Error("Model is not installed or still downloading");
+    }
+    const sys = this.getSystemResources();
+    if (sys.totalRamMB < entry.minRamMB) {
+      throw new Error(`Insufficient RAM. Model needs ${entry.minRamMB}MB, system has ${sys.totalRamMB}MB`);
+    }
+    await this.stopRuntime(window);
+    try {
+      await this.initLlama();
+      if (!LlamaCpp) throw new Error("node-llama-cpp failed to load");
+      this.activeLlama = await LlamaCpp.getLlama();
+      this.activeModel = await this.activeLlama.loadModel({
+        modelPath: status.path
+      });
+      this.activeContext = await this.activeModel.createContext();
+      this.activeChatSession = new LlamaCpp.LlamaChatSession({
+        contextSequence: this.activeContext.getSequence()
+      });
+      this.activeModelId = id;
+      this.installStatus.forEach((s) => {
+        if (s.status === "active") s.status = "installed";
+      });
+      status.status = "active";
+      this.broadcastStatus(window);
+      return true;
+    } catch (err) {
+      console.error("Failed to start model", err);
+      await this.stopRuntime(window);
+      throw err;
+    }
+  }
+  async stopRuntime(window) {
+    if (this.activeContext) {
+      await this.activeContext.dispose();
+      this.activeContext = null;
+    }
+    if (this.activeModel) {
+      await this.activeModel.dispose();
+      this.activeModel = null;
+    }
+    this.activeChatSession = null;
+    if (this.activeModelId) {
+      const status = this.installStatus.get(this.activeModelId);
+      if (status && status.status === "active") {
+        status.status = "installed";
+      }
+      this.activeModelId = null;
+    }
+    if (window) this.broadcastStatus(window);
+  }
+  /**
+   * Prompt the active model
+   */
+  async promptModel(message, onToken) {
+    if (!this.activeChatSession) {
+      throw new Error("No local model is running");
+    }
+    const response = await this.activeChatSession.prompt(message, {
+      onToken: (chunk) => {
+        if (onToken) {
+          let text = "";
+          if (Array.isArray(chunk)) {
+            text = this.activeModel.detokenize(chunk);
+          } else if (typeof chunk === "string") {
+            text = chunk;
+          }
+          onToken(text);
+        }
+      }
+    });
+    return response;
+  }
+  async deleteModel(id, window) {
+    const entry = CATALOG.find((e) => e.id === id);
+    if (!entry) throw new Error("Model not found");
+    if (this.activeModelId === id) {
+      await this.stopRuntime(window);
+    }
+    const destPath = path.join(MODELS_DIR, entry.filename);
+    if (fs.existsSync(destPath)) {
+      await fs.promises.unlink(destPath);
+    }
+    this.installStatus.set(id, {
+      id,
+      status: "uninstalled",
+      progress: 0
+    });
+    this.broadcastStatus(window);
+    return true;
+  }
+  broadcastStatus(window) {
+    window.webContents.send("models:catalog-updated", this.getCatalog());
+  }
+}
 let mainWindow = null;
 let tray = null;
 let pythonManager = null;
+let modelManager = null;
 const gotLock = electron.app.requestSingleInstanceLock();
 if (!gotLock) {
   electron.app.quit();
@@ -669,7 +1041,8 @@ electron.app.whenReady().then(async () => {
     utils.optimizer.watchWindowShortcuts(window);
   });
   pythonManager = new PythonManager();
-  registerIpcHandlers(pythonManager);
+  modelManager = new ModelManager();
+  registerIpcHandlers(pythonManager, modelManager);
   createWindow();
   createTray();
   try {

@@ -452,7 +452,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     trust: 'builtin',
     installed: Object.values(skills).some(s => s.name === skill.name || s.id === skill.id),
     tags: [skill.id === 'skill-hub' ? 'System' : 'Official'],
-    icon: skill.icon
+    icon: skill.icon,
+    enabled: true
   }));
 
   // Combine backend skills with local registry skills

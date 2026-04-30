@@ -20,9 +20,29 @@ const hermesAPI = {
   minimize: () => electron.ipcRenderer.send("window:minimize"),
   maximize: () => electron.ipcRenderer.send("window:maximize"),
   close: () => electron.ipcRenderer.send("window:close"),
+  getSystemInfo: () => electron.ipcRenderer.invoke("hermes:get-system-info"),
   // Auto Updater
   checkForUpdates: () => electron.ipcRenderer.invoke("hermes:check-for-updates"),
   installUpdate: () => electron.ipcRenderer.invoke("hermes:install-update"),
+  // Local Models
+  getModelsCatalog: () => electron.ipcRenderer.invoke("models:catalog"),
+  getModelsSystemResources: () => electron.ipcRenderer.invoke("models:sys-resources"),
+  downloadModel: (id) => electron.ipcRenderer.invoke("models:download", { id }),
+  stopDownloadModel: (id) => electron.ipcRenderer.invoke("models:stop-download", { id }),
+  startLocalRuntime: (id) => electron.ipcRenderer.invoke("models:start-runtime", { id }),
+  stopLocalRuntime: () => electron.ipcRenderer.invoke("models:stop-runtime"),
+  promptLocalModel: (message) => electron.ipcRenderer.invoke("models:prompt", { message }),
+  deleteModel: (id) => electron.ipcRenderer.invoke("models:delete", id),
+  onModelsCatalogUpdated: (callback) => {
+    const handler = (_event, data) => callback(data);
+    electron.ipcRenderer.on("models:catalog-updated", handler);
+    return () => electron.ipcRenderer.removeListener("models:catalog-updated", handler);
+  },
+  onModelsToken: (callback) => {
+    const handler = (_event, data) => callback(data);
+    electron.ipcRenderer.on("models:token", handler);
+    return () => electron.ipcRenderer.removeListener("models:token", handler);
+  },
   // Event listeners (returns unsubscribe function)
   onBackendStatus: (callback) => {
     const handler = (_event, data) => callback(data);

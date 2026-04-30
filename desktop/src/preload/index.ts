@@ -21,12 +21,6 @@ export interface HermesAPI {
     headers?: Record<string, string>
   }) => Promise<{ ok: boolean; status: number; data?: any; error?: string }>
 
-  // Streaming API
-  stream: (args: {
-    endpoint: string
-    body?: any
-  }) => Promise<{ ok: boolean; error?: string }>
-
   stream: (args: { endpoint: string; body?: any }) => Promise<{ ok: boolean; error?: string }>
   sendMessage: (args: { message: string; sessionId?: string; agentMode?: boolean; settings?: any }) => Promise<any>
   getStatus: () => Promise<any>
@@ -56,6 +50,7 @@ export interface HermesAPI {
   startLocalRuntime: (id: string) => Promise<any>
   stopLocalRuntime: () => Promise<any>
   promptLocalModel: (message: string) => Promise<any>
+  deleteModel: (id: string) => Promise<any>
   
   onModelsCatalogUpdated: (callback: (data: any) => void) => () => void
   onModelsToken: (callback: (data: any) => void) => () => void

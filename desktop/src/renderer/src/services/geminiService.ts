@@ -1449,34 +1449,33 @@ export class LLMService {
         // We use the integrated ModelManager via IPC
         if (onChunk) onChunk("", "🤖 Local Model (Integrated)...\n");
         
-        try {
-          // Prepare the prompt with history if needed, but localLlmService handles it differently.
-          // For now, let's just pass the prompt as-is or formatted.
-          const formattedHistory = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
-          const fullPrompt = `${systemInstruction}\n\n${formattedHistory}\n\nUSER: ${prompt}`;
-          
-          let fullResponse = "";
-          const unsubscribe = (window as any).hermesAPI.onModelsToken((token: string) => {
-            fullResponse += token;
-            if (onChunk) onChunk(token);
-          });
+        // Prepare the prompt with history if needed, but localLlmService handles it differently.
+        // For now, let's just pass the prompt as-is or formatted.
+        const formattedHistory = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+        const fullPrompt = `${systemInstruction}\n\n${formattedHistory}\n\nUSER: ${prompt}`;
+        
+        let fullResponse = "";
+        const unsubscribe = (window as any).hermesAPI.onModelsToken((token: string) => {
+          fullResponse += token;
+          if (onChunk) onChunk(token);
+        });
 
-          try {
-            const res = await (window as any).hermesAPI.promptLocalModel(fullPrompt);
-            unsubscribe();
-            if (!res.ok) throw new Error(res.error || "Local model generation failed");
-            
-            result = {
-              text: res.data || fullResponse, // Use accumulated text as fallback
-              citations: [],
-              relatedQuestions: [],
-            };
-            return result;
-          } catch (err: any) {
-            unsubscribe();
-            console.error("IPC Local Model Error:", err);
-            throw err;
-          }
+        try {
+          const res = await (window as any).hermesAPI.promptLocalModel(fullPrompt);
+          unsubscribe();
+          if (!res.ok) throw new Error(res.error || "Local model generation failed");
+          
+          result = {
+            text: res.data || fullResponse, // Use accumulated text as fallback
+            citations: [],
+            relatedQuestions: [],
+          };
+          return result;
+        } catch (err: any) {
+          unsubscribe();
+          console.error("IPC Local Model Error:", err);
+          throw err;
+        }
       }
 
       // Fallback to WebLLM or External Ollama

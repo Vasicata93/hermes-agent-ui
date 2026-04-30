@@ -27,7 +27,6 @@ import { getHolidays } from "./holidayService";
 import { skillManager } from "./integration/SkillManager";
 import { portfolioService } from "./portfolioService";
 import { safeDigitalService } from "./safeDigitalService";
-import { HERMES_CAPABILITIES } from "./agent/HermesRegistry";
 
 // --- Tool Definitions ---
 
@@ -583,14 +582,12 @@ export class LLMService {
         modelName = openRouterModel || "openai/gpt-4o-mini";
       } else {
         // Local mode handling (Internal IPC vs External Ollama)
-        const localSettings = arguments[10]; // Hacky: We didn't pass full settings, but activeLocalModel represents the custom endpoint if provided
-
-        if (typeof window !== 'undefined' && window.hermesAPI && activeLocalModel && !(activeLocalModel as any).endpoint) {
+        if (typeof window !== 'undefined' && (window as any).hermesAPI && activeLocalModel && !(activeLocalModel as any).endpoint) {
           // We are using the integrated node-llama-cpp via IPC
           // For JSON mode, we append a strict instruction to the prompt
           const fullPrompt = `${systemInstruction}\n\n[USER]: ${prompt}\n\nCRITICAL: You must output ONLY valid JSON format.`;
           try {
-            const res = await window.hermesAPI.promptLocalModel(fullPrompt);
+            const res = await (window as any).hermesAPI.promptLocalModel(fullPrompt);
             if (res.ok) {
               return this.extractJson(res.data);
             }
@@ -767,11 +764,11 @@ export class LLMService {
         apiKey = openRouterKey;
         modelName = openRouterModel || "openai/gpt-4o-mini";
       } else {
-        if (typeof window !== 'undefined' && window.hermesAPI && activeLocalModel && !(activeLocalModel as any).endpoint) {
+        if (typeof window !== 'undefined' && (window as any).hermesAPI && activeLocalModel && !(activeLocalModel as any).endpoint) {
           // We are using the integrated node-llama-cpp via IPC
           const fullPrompt = requireJson ? `${prompt}\n\nCRITICAL: You must output ONLY valid JSON format.` : prompt;
           try {
-            const res = await window.hermesAPI.promptLocalModel(fullPrompt);
+            const res = await (window as any).hermesAPI.promptLocalModel(fullPrompt);
             if (res.ok) {
               return res.data;
             }
