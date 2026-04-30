@@ -48,8 +48,23 @@ export interface ISkill {
   requiredConnectors: string[]; // Array of connector IDs needed
   
   // The schema that will be passed to the LLM
-  schema: ToolSchema;
+  schema?: ToolSchema;
   
   // The actual execution function
-  execute: (params: any, context?: any) => Promise<any>;
+  execute?: (params: any, context?: any) => Promise<any>;
+}
+
+export interface IHubSkill {
+  name: string;
+  description: string;
+  source: string;
+  identifier: string;
+  trust: string;
+  tags: string[];
+  installed: boolean;
+  enabled: boolean;
+  update_status?: string;
+  install_path?: string;
+  detail_url?: string;
+  repo_url?: string;
 }

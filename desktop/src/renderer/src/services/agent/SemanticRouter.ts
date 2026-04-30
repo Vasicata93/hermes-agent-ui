@@ -70,9 +70,32 @@ class SemanticRouter {
    * Transforms a natural language text into a vector and finds the closest semantic intent.
    */
   async classify(text: string): Promise<{ category: SemanticCategory | null; score: number }> {
-    // Stubbed out for Electron version to avoid ONNX web crashes.
-    // Hermes Agent backend will handle intent classification.
-    return { category: null, score: 0 };
+    if (!this.isReady || !this.extractor) {
+      throw new Error("Semantic Router not ready");
+    }
+    
+    // Embed the incoming user text
+    const output = await this.extractor(text, { pooling: 'mean', normalize: true });
+    const textVector = Array.from(output.data);
+
+    let bestMatch: SemanticCategory | null = null;
+    let highestScore = -1;
+
+    // Compare similarity against all known categories
+    for (const [key, vec] of Object.entries(this.intentEmbeddings)) {
+      const score = this.cosineSimilarity(textVector, vec as number[]);
+      if (score > highestScore) {
+        highestScore = score;
+        bestMatch = key as SemanticCategory;
+      }
+    }
+
+    // Threshold check: if score is too low, we return null to force heuristics
+    if (highestScore < 0.35) {
+       bestMatch = null;
+    }
+
+    return { category: bestMatch, score: highestScore };
   }
 }
 

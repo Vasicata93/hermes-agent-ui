@@ -11,10 +11,12 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { PythonManager } from './pythonManager'
 import { registerIpcHandlers } from './ipcHandlers'
 import { setupAutoUpdater } from './autoUpdater'
+import { ModelManager } from './modelManager'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let pythonManager: PythonManager | null = null
+let modelManager: ModelManager | null = null
 
 // Prevent multiple instances
 const gotLock = app.requestSingleInstanceLock()
@@ -130,9 +132,12 @@ app.whenReady().then(async () => {
 
   // Initialize Python backend manager
   pythonManager = new PythonManager()
+  
+  // Initialize Local Model Manager
+  modelManager = new ModelManager()
 
   // Register IPC handlers for renderer↔backend communication
-  registerIpcHandlers(pythonManager)
+  registerIpcHandlers(pythonManager, modelManager)
 
   // Create the main window
   createWindow()

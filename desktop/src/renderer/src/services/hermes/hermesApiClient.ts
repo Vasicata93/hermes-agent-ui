@@ -38,6 +38,17 @@ declare global {
       onStreamEnd: (callback: (data: any) => void) => () => void;
       onUpdaterStatus: (callback: (data: any) => void) => () => void;
       platform: string;
+      // Local Models (node-llama-cpp)
+      getModelsCatalog: () => Promise<any>;
+      getModelsSystemResources: () => Promise<any>;
+      downloadModel: (id: string) => Promise<any>;
+      stopDownloadModel: (id: string) => Promise<any>;
+      startLocalRuntime: (id: string) => Promise<any>;
+      stopLocalRuntime: () => Promise<any>;
+      promptLocalModel: (message: string) => Promise<any>;
+      deleteModel: (id: string) => Promise<any>;
+      onModelsCatalogUpdated: (callback: (data: any) => void) => () => void;
+      onModelsToken: (callback: (data: any) => void) => () => void;
     };
   }
 }
@@ -227,6 +238,36 @@ export class HermesApiClient {
 
   static async getSkills() {
     return this.get('/api/skills');
+  }
+
+  static async toggleSkillBackend(name: string, enabled: boolean) {
+    return this.put('/api/skills/toggle', { name, enabled });
+  }
+
+  static async getHubSkills(query: string = '', page: number = 1, pageSize: number = 20, source: string = 'all') {
+    const params = new URLSearchParams();
+    if (query) params.set('query', query);
+    params.set('page', String(page));
+    params.set('page_size', String(pageSize));
+    params.set('source', source);
+    return this.get(`/api/skills/hub?${params}`);
+  }
+
+  static async installSkill(identifier: string, category: string = '', force: boolean = false) {
+    return this.post('/api/skills/hub/install', { identifier, category, force });
+  }
+
+  static async uninstallSkill(skillName: string) {
+    return this.delete(`/api/skills/hub/${skillName}`);
+  }
+
+  static async getSkillUpdates(name?: string) {
+    const endpoint = name ? `/api/skills/hub/updates?name=${name}` : '/api/skills/hub/updates';
+    return this.get(endpoint);
+  }
+
+  static async updateSkill(name: string) {
+    return this.post('/api/skills/hub/update', { name });
   }
 
   static async getMemory() {

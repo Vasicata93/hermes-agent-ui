@@ -245,6 +245,7 @@ export interface AppSettings {
   // Local/Custom Models Configuration
   localModels: LocalModelConfig[]; // Array of downloaded models
   activeLocalModelId: string;
+  activeLocalModel?: { endpoint: string }; // External Ollama/LMStudio endpoint
 
   useSearch: boolean;
   defaultProMode: ProMode; // Default mode for the left button
@@ -289,6 +290,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
   localModels: [], // Starts empty, populated by downloads
   activeLocalModelId: "",
+  activeLocalModel: { endpoint: "http://localhost:11434" },
   useSearch: true,
   defaultProMode: ProMode.STANDARD,
   enableMemory: true,

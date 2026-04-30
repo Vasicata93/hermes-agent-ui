@@ -42,6 +42,23 @@ export interface HermesAPI {
   minimize: () => void
   maximize: () => void
   close: () => void
+  getSystemInfo: () => Promise<any>
+
+  // Auto Updater
+  checkForUpdates: () => Promise<any>
+  installUpdate: () => void
+
+  // Local Models
+  getModelsCatalog: () => Promise<any>
+  getModelsSystemResources: () => Promise<any>
+  downloadModel: (id: string) => Promise<any>
+  stopDownloadModel: (id: string) => Promise<any>
+  startLocalRuntime: (id: string) => Promise<any>
+  stopLocalRuntime: () => Promise<any>
+  promptLocalModel: (message: string) => Promise<any>
+  
+  onModelsCatalogUpdated: (callback: (data: any) => void) => () => void
+  onModelsToken: (callback: (data: any) => void) => () => void
 
   // Event listeners
   onBackendStatus: (callback: (data: any) => void) => () => void
@@ -76,6 +93,33 @@ const hermesAPI: HermesAPI = {
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
+  getSystemInfo: () => ipcRenderer.invoke('hermes:get-system-info'),
+
+  // Auto Updater
+  checkForUpdates: () => ipcRenderer.invoke('hermes:check-for-updates'),
+  installUpdate: () => ipcRenderer.invoke('hermes:install-update'),
+
+  // Local Models
+  getModelsCatalog: () => ipcRenderer.invoke('models:catalog'),
+  getModelsSystemResources: () => ipcRenderer.invoke('models:sys-resources'),
+  downloadModel: (id) => ipcRenderer.invoke('models:download', { id }),
+  stopDownloadModel: (id) => ipcRenderer.invoke('models:stop-download', { id }),
+  startLocalRuntime: (id) => ipcRenderer.invoke('models:start-runtime', { id }),
+  stopLocalRuntime: () => ipcRenderer.invoke('models:stop-runtime'),
+  promptLocalModel: (message) => ipcRenderer.invoke('models:prompt', { message }),
+  deleteModel: (id) => ipcRenderer.invoke('models:delete', id),
+
+  onModelsCatalogUpdated: (callback) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('models:catalog-updated', handler)
+    return () => ipcRenderer.removeListener('models:catalog-updated', handler)
+  },
+
+  onModelsToken: (callback) => {
+    const handler = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('models:token', handler)
+    return () => ipcRenderer.removeListener('models:token', handler)
+  },
 
   // Event listeners (returns unsubscribe function)
   onBackendStatus: (callback) => {

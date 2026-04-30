@@ -27,7 +27,6 @@ import { getHolidays } from "./holidayService";
 import { skillManager } from "./integration/SkillManager";
 import { portfolioService } from "./portfolioService";
 import { safeDigitalService } from "./safeDigitalService";
-import { HERMES_CAPABILITIES } from "./agent/HermesRegistry";
 
 // --- Tool Definitions ---
 
@@ -583,27 +582,25 @@ export class LLMService {
         modelName = openRouterModel || "openai/gpt-4o-mini";
       } else {
         // Local mode handling (Internal IPC vs External Ollama)
-        const localSettings = arguments[10]; // Hacky: We didn't pass full settings, but activeLocalModel represents the custom endpoint if provided
-
         if (typeof window !== 'undefined' && window.hermesAPI && activeLocalModel && !(activeLocalModel as any).endpoint) {
-          // We are using the integrated node-llama-cpp via IPC
-          // For JSON mode, we append a strict instruction to the prompt
-          const fullPrompt = `${systemInstruction}\n\n[USER]: ${prompt}\n\nCRITICAL: You must output ONLY valid JSON format.`;
-          try {
-            const res = await window.hermesAPI.promptLocalModel(fullPrompt);
-            if (res.ok) {
-              return this.extractJson(res.data);
-            }
-            throw new Error(res.error || 'Local model IPC failed');
-          } catch (e) {
-            console.error('Error generating JSON with local IPC:', e);
-            throw e;
-          }
+           // We are using the integrated node-llama-cpp via IPC
+           // For JSON mode, we append a strict instruction to the prompt
+           const fullPrompt = `${systemInstruction}\n\n[USER]: ${prompt}\n\nCRITICAL: You must output ONLY valid JSON format.`;
+           try {
+             const res = await window.hermesAPI.promptLocalModel(fullPrompt);
+             if (res.ok) {
+               return this.extractJson(res.data);
+             }
+             throw new Error(res.error || 'Local model IPC failed');
+           } catch (e) {
+             console.error('Error generating JSON with local IPC:', e);
+             throw e;
+           }
         }
-
+        
         endpoint = (activeLocalModel as any)?.endpoint || "http://localhost:11434";
         if (!endpoint.endsWith('/v1/chat/completions')) {
-          endpoint = endpoint.replace(/\/+$/, '') + '/v1/chat/completions';
+           endpoint = endpoint.replace(/\/+$/, '') + '/v1/chat/completions';
         }
         modelName = activeLocalModel?.modelId || "";
         apiKey = "not-needed";
@@ -768,23 +765,23 @@ export class LLMService {
         modelName = openRouterModel || "openai/gpt-4o-mini";
       } else {
         if (typeof window !== 'undefined' && window.hermesAPI && activeLocalModel && !(activeLocalModel as any).endpoint) {
-          // We are using the integrated node-llama-cpp via IPC
-          const fullPrompt = requireJson ? `${prompt}\n\nCRITICAL: You must output ONLY valid JSON format.` : prompt;
-          try {
-            const res = await window.hermesAPI.promptLocalModel(fullPrompt);
-            if (res.ok) {
-              return res.data;
-            }
-            throw new Error(res.error || 'Local model IPC failed');
-          } catch (e) {
-            console.error('Error generating text with local IPC:', e);
-            throw e;
-          }
+           // We are using the integrated node-llama-cpp via IPC
+           const fullPrompt = requireJson ? `${prompt}\n\nCRITICAL: You must output ONLY valid JSON format.` : prompt;
+           try {
+             const res = await window.hermesAPI.promptLocalModel(fullPrompt);
+             if (res.ok) {
+               return res.data;
+             }
+             throw new Error(res.error || 'Local model IPC failed');
+           } catch (e) {
+             console.error('Error generating text with local IPC:', e);
+             throw e;
+           }
         }
 
         endpoint = (activeLocalModel as any)?.endpoint || "http://localhost:11434";
         if (!endpoint.endsWith('/v1/chat/completions')) {
-          endpoint = endpoint.replace(/\/+$/, '') + '/v1/chat/completions';
+           endpoint = endpoint.replace(/\/+$/, '') + '/v1/chat/completions';
         }
         modelName = activeLocalModel?.modelId || "";
         apiKey = "not-needed";
@@ -853,6 +850,42 @@ export class LLMService {
       }
       return data.choices[0].message.content || "";
     }
+  }
+
+  /**
+   * Simplified helper for chat interface
+   */
+  public async generateChatResponse(
+    text: string,
+    history: Message[],
+    attachments: Attachment[],
+    settings: any,
+    onChunk?: (text: string, reasoning?: string) => void
+  ): Promise<string> {
+    const res = await this.generateResponse(
+      history,
+      text,
+      attachments || [],
+      settings.modelProvider,
+      settings.openRouterApiKey || "",
+      settings.activeModelId || "",
+      settings.openAiApiKey || "",
+      settings.activeOpenAiModelId || "",
+      settings.activeLocalModelId,
+      settings.useSearch || false,
+      settings.proMode || ProMode.STANDARD,
+      settings.enableMemory || false,
+      settings.userProfile || {},
+      settings.aiProfile || {},
+      undefined, // spaceSystemInstruction
+      settings.tavilyApiKey,
+      settings.geminiApiKey,
+      settings.searchProvider || "tavily",
+      settings.braveApiKey,
+      onChunk,
+      settings.useAgenticResearch || false
+    );
+    return res.text;
   }
 
   /**
@@ -1410,42 +1443,44 @@ export class LLMService {
     // 4. Route to Provider
     if (provider === ModelProvider.LOCAL) {
       if (!activeLocalModel) throw new Error("No local model configured.");
-      const { localLlmService } = await import("./localLlmService");
 
-      // Auto-initialize if needed
-      if (
-        !localLlmService.isReady() ||
-        localLlmService.getLoadedModelId() !== activeLocalModel.modelId
-      ) {
-        if (onChunk)
-          onChunk(
-            "Initializing local model... (this may take a moment if it's the first time)",
-          );
-
-        if ((activeLocalModel as any).isExternal) {
-          await localLlmService.initModel(activeLocalModel.modelId, (activeLocalModel as any).endpoint);
-        } else {
-          const res = await (window as any).hermesAPI.request({
-            method: 'POST',
-            endpoint: '/api/models/local/load',
-            body: { model_id: activeLocalModel.modelId }
+      // Check if it's integrated local model (via Electron IPC) vs external/browser
+      if (typeof window !== 'undefined' && (window as any).hermesAPI && !(activeLocalModel as any).endpoint) {
+        // We use the integrated ModelManager via IPC
+        if (onChunk) onChunk("", "🤖 Local Model (Integrated)...\n");
+        
+        try {
+          // Prepare the prompt with history if needed, but localLlmService handles it differently.
+          // For now, let's just pass the prompt as-is or formatted.
+          const formattedHistory = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+          const fullPrompt = `${systemInstruction}\n\n${formattedHistory}\n\nUSER: ${prompt}`;
+          
+          let fullResponse = "";
+          const unsubscribe = (window as any).hermesAPI.onModelsToken((token: string) => {
+            fullResponse += token;
+            if (onChunk) onChunk(token);
           });
-          if (!res.ok) throw new Error(`Backend failed to load local model: ${res.error}`);
-          await localLlmService.initModel(activeLocalModel.modelId);
-        }
+
+          try {
+            const res = await (window as any).hermesAPI.promptLocalModel(fullPrompt);
+            unsubscribe();
+            if (!res.ok) throw new Error(res.error || "Local model generation failed");
+            
+            result = {
+              text: res.data || fullResponse, // Use accumulated text as fallback
+              citations: [],
+              relatedQuestions: [],
+            };
+            return result;
+          } catch (err: any) {
+            unsubscribe();
+            console.error("IPC Local Model Error:", err);
+            throw err;
+          }
       }
 
-      const localResult = await localLlmService.generateResponse(
-        history,
-        prompt,
-        systemInstruction,
-        onChunk,
-      );
-      result = {
-        text: localResult.text,
-        citations: [],
-        relatedQuestions: [],
-      };
+      // Fallback to WebLLM or External Ollama
+      const { localLlmService } = await import("./localLlmService");
     } else if (provider === ModelProvider.GEMINI) {
       result = await this.generateGeminiResponse(
         history,

@@ -203,6 +203,22 @@ export const AVAILABLE_OFFLINE_MODELS: LocalModelConfig[] = [
   },
 ];
 
+export const HERMES_CAPABILITIES = {
+  SKILLS: [
+    { id: 'skill-hub', name: 'Hermes Skill Hub', description: 'Central marketplace for installing and managing agent skills.', icon: 'Zap' },
+    { id: 'web-search', name: 'Web Search', description: 'Browse the web for real-time information and facts.', icon: 'Globe' },
+    { id: 'memory-mgmt', name: 'Memory Manager', description: 'Long-term memory management for personalized agent interactions.', icon: 'Brain' },
+    { id: 'portfolio', name: 'Portfolio Tracker', description: 'Financial asset tracking and portfolio analysis tools.', icon: 'TrendingUp' }
+  ],
+  FEATURES: [
+    "Local Offline Inference",
+    "Agentic Planning",
+    "Web Search Integration",
+    "Memory Management",
+    "Multimodal Perception",
+  ]
+};
+
 export const UI_STRINGS = {
   en: {
     newThread: "New Thread",

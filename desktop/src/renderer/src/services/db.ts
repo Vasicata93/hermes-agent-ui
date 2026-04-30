@@ -37,6 +37,20 @@ export class DB {
       console.error(`Failed to set ${key} in ${storeName}:`, e);
     }
   }
+
+  async put(storeName: string, value: any): Promise<void> {
+    // Standard put behavior: use ID as key
+    const key = value.id || value.connectorId || "default";
+    return this.set(storeName, key, value);
+  }
+
+  async delete(storeName: string, key: string): Promise<void> {
+    try {
+      await HermesApiClient.setStore(storeName, key, null);
+    } catch (e) {
+      console.error(`Failed to delete ${key} from ${storeName}:`, e);
+    }
+  }
 }
 
 export const db = new DB();

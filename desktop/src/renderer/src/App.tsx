@@ -84,6 +84,9 @@ import { portfolioService } from "./services/portfolioService";
 import { safeDigitalService } from "./services/safeDigitalService";
 import { semanticRouter } from "./services/agent/SemanticRouter";
 import { HermesApiClient } from "./services/hermes/hermesApiClient";
+import { LLMService } from "./services/geminiService";
+
+const llmService = new LLMService();
 
 // --- End of imports ---
 import { Toaster } from 'react-hot-toast';
@@ -2237,7 +2240,40 @@ function App() {
     try {
       // Use Hermes Backend API for ALL message processing (Chat Mode & Agent Mode)
       console.log("DEBUG [handleSendMessage]: Trimitere setări către backend (Model):", settings.activeLocalModelId || "Default");
-      const res = await HermesApiClient.sendMessage(processedText, threadId, isAgentMode, settings);
+      
+      let res;
+      
+      if (settings.modelProvider === ModelProvider.LOCAL && settings.activeLocalModelId && !settings.activeLocalModelId.endpoint) {
+        // Integrated Local Model
+        console.log("DEBUG [handleSendMessage]: Using integrated LOCAL model");
+        const responseText = await llmService.generateChatResponse(
+          processedText,
+          history,
+          attachments,
+          settings,
+          (chunk) => {
+            setThreads((prev) =>
+              prev.map((t) =>
+                t.id === threadId
+                  ? {
+                    ...t,
+                    messages: t.messages.map((m) =>
+                      m.id === tempBotId
+                        ? { ...m, content: (m.content || "") + chunk, isThinking: false }
+                        : m
+                    ),
+                    updatedAt: Date.now(),
+                  }
+                  : t,
+              ),
+            );
+          }
+        );
+        res = { response: responseText, session_id: threadId };
+      } else {
+        // Python Backend (Cloud or Ollama)
+        res = await HermesApiClient.sendMessage(processedText, threadId, isAgentMode, settings);
+      }
 
       if (isStoppedRef.current) return;
 
@@ -3071,12 +3107,12 @@ function App() {
           </div>
         ) : viewToRender === "dashboard" ? (
           <div className="flex-1 overflow-y-auto bg-pplx-primary custom-scrollbar pt-12 md:pt-10 relative">
-            <div className="absolute top-0 left-0 right-0 z-20 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none md:hidden">
+            <div className="absolute top-0 left-0 right-0 z-20 p-2 pt-4 flex flex-col items-start gap-4 pointer-events-none">
               {!sidebarOpen && (
                 <>
                   <SidebarToggle
                     onClick={handleOpenSidebar}
-                    className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1 md:hidden"
+                    className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all -ml-1"
                     size={36}
                   />
                 </>
@@ -3349,6 +3385,15 @@ function App() {
               ) : // ... existing active thread view ...
                 isDashboardMode ? (
                   <div className="fixed inset-0 z-[100] bg-white dark:bg-gray-900 overflow-y-auto animate-fadeIn">
+                    {!sidebarOpen && (
+                      <div className="fixed top-4 left-4 z-[110]">
+                        <SidebarToggle
+                          onClick={handleOpenSidebar}
+                          className="flex p-0 hover:bg-transparent text-pplx-muted pointer-events-auto transition-all"
+                          size={36}
+                        />
+                      </div>
+                    )}
                     <DashboardView onClose={() => setIsDashboardMode(false)} />
                   </div>
                 ) : (

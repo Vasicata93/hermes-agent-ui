@@ -39,7 +39,10 @@ import {
   XCircle,
   Wallet,
   Sliders,
+  RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import {
   AppSettings,
   ModelProvider,
@@ -51,15 +54,18 @@ import { useIntegrationStore } from "../store/integrationStore";
 import { connectorManager } from "../services/integration/ConnectorManager";
 import { HermesApiClient } from "../services/hermes/hermesApiClient";
 import { UI_STRINGS, AVAILABLE_OFFLINE_MODELS } from "../constants";
+import { useModelStore } from "../store/modelStore";
 
 // --- HELPERS ---
 
-const checkLocalModelSupport = () => {
-  if (typeof navigator === "undefined" || !(navigator as any).gpu) {
+const checkLocalModelSupport = async () => {
+  const sysInfo = await (window as any).hermesAPI.getSystemInfo();
+  const totalGB = sysInfo.totalMemory / (1024 * 1024 * 1024);
+  if (totalGB < 8) {
     return {
       supported: false,
-      reason: "WebGPU not supported",
-      details: "Please use a desktop browser with WebGPU support enabled."
+      reason: "Limitare Hardware",
+      details: `Sistemul tău are ${totalGB.toFixed(1)}GB RAM. Modelele locale necesită cel puțin 8GB RAM pentru o funcționare stabilă.`
     };
   }
   return { supported: true };
@@ -72,6 +78,7 @@ interface SettingsModalProps {
   onSave: (newSettings: AppSettings) => void;
   initialTab?: TabType;
 }
+import { HERMES_CAPABILITIES } from "../services/agent/HermesRegistry";
 
 type TabType = "profile" | "general" | "models" | "memory" | "connectors" | "skills";
 
@@ -107,11 +114,10 @@ const SidebarItem = ({
 }) => (
   <button
     onClick={() => onSelect(id)}
-    className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-sm transition-all group ${
-      activeTab === id
-        ? "bg-pplx-hover text-pplx-text shadow-sm"
-        : "text-pplx-muted hover:bg-pplx-secondary hover:text-pplx-text"
-    }`}
+    className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-sm transition-all group ${activeTab === id
+      ? "bg-pplx-hover text-pplx-text shadow-sm"
+      : "text-pplx-muted hover:bg-pplx-secondary hover:text-pplx-text"
+      }`}
   >
     <div
       className={`${activeTab === id ? "text-pplx-accent" : "text-pplx-muted group-hover:text-pplx-text opacity-70"}`}
@@ -182,11 +188,10 @@ const FilterPill: React.FC<FilterPillProps> = ({
 }) => (
   <button
     onClick={() => onClick(id)}
-    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all flex-shrink-0 ${
-      isActive
-        ? "bg-pplx-text text-pplx-primary shadow-lg ring-1 ring-pplx-text/10"
-        : "bg-pplx-secondary/50 text-pplx-muted hover:bg-pplx-hover hover:text-pplx-text"
-    }`}
+    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all flex-shrink-0 ${isActive
+      ? "bg-pplx-text text-pplx-primary shadow-lg ring-1 ring-pplx-text/10"
+      : "bg-pplx-secondary/50 text-pplx-muted hover:bg-pplx-hover hover:text-pplx-text"
+      }`}
   >
     <Icon size={14} className={isActive ? "text-pplx-primary" : "opacity-70"} />
     {label}
@@ -261,7 +266,7 @@ const ToggleRow = ({
 );
 
 interface OfflineModelCardProps {
-  model: LocalModelConfig;
+  model: any;
   isDownloaded: boolean;
   isActive: boolean;
   onDownload: () => void;
@@ -286,11 +291,10 @@ const OfflineModelCard: React.FC<OfflineModelCardProps> = ({
 }) => {
   return (
     <div
-      className={`p-4 rounded-2xl border transition-all duration-150 ${
-        isActive
-          ? "bg-pplx-card border-pplx-accent shadow-md"
-          : "bg-pplx-secondary/20 border-pplx-border hover:bg-pplx-secondary/40"
-      } ${!isSupported ? "opacity-60" : ""}`}
+      className={`p-4 rounded-2xl border transition-all duration-150 ${isActive
+        ? "bg-pplx-card border-pplx-accent shadow-md"
+        : "bg-pplx-secondary/20 border-pplx-border hover:bg-pplx-secondary/40"
+        } ${!isSupported ? "opacity-60" : ""}`}
     >
       <div className="flex justify-between items-start mb-2">
         <div className="flex items-center gap-2">
@@ -305,7 +309,7 @@ const OfflineModelCard: React.FC<OfflineModelCardProps> = ({
           </div>
         ) : (
           <span className="text-[10px] text-pplx-muted font-medium bg-pplx-secondary px-2 py-0.5 rounded-full">
-            {model.fileSize}
+            {Math.round(model.sizeMB / 1024 * 10) / 10} GB
           </span>
         )}
       </div>
@@ -343,11 +347,10 @@ const OfflineModelCard: React.FC<OfflineModelCardProps> = ({
               <button
                 onClick={onSelect}
                 disabled={isActive}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
-                  isActive
-                    ? "bg-pplx-text text-pplx-primary cursor-default"
-                    : "bg-pplx-secondary hover:bg-pplx-hover text-pplx-text"
-                }`}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${isActive
+                  ? "bg-pplx-text text-pplx-primary cursor-default"
+                  : "bg-pplx-secondary hover:bg-pplx-hover text-pplx-text"
+                  }`}
               >
                 {isActive ? "Selected" : "Select"}
               </button>
@@ -365,13 +368,12 @@ const OfflineModelCard: React.FC<OfflineModelCardProps> = ({
               title={
                 !isSupported
                   ? unsupportedReason
-                  : `Download ${model.name} (${model.fileSize})`
+                  : `Download ${model.name}`
               }
-              className={`w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                isSupported
-                  ? "bg-pplx-text text-pplx-primary hover:opacity-90 cursor-pointer"
-                  : "bg-pplx-secondary/50 text-pplx-muted cursor-not-allowed"
-              }`}
+              className={`w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${isSupported
+                ? "bg-pplx-text text-pplx-primary hover:opacity-90 cursor-pointer"
+                : "bg-pplx-secondary/50 text-pplx-muted cursor-not-allowed"
+                }`}
             >
               {isSupported ? (
                 <>
@@ -398,7 +400,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [formData, setFormData] = useState<AppSettings>(settings);
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [memories, setMemories] = useState<MemoryItem[]>([]);
-  const [llmType, setLlmType] = useState<"cloud" | "local">("cloud");
+  const [llmType, setLlmType] = useState<"cloud" | "external" | "local">("cloud");
+  const [systemSupport, setSystemSupport] = useState<{ supported: boolean, reason?: string, details?: string }>({ supported: true });
 
   // Mobile Navigation State
   const [isMobileDetail, setIsMobileDetail] = useState(false);
@@ -413,15 +416,106 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [newMemoryCategory, setNewMemoryCategory] =
     useState<MemoryCategory>("about_me");
 
-  // Offline Model State
+  // Offline Model State from Backend
+  const [localModelsStatus, setLocalModelsStatus] = useState<Record<string, { status: string, progress: number }>>({});
   const [downloadProgress, setDownloadProgress] = useState<{
     [key: string]: number;
   }>({});
 
   // Integrations State
-  const { connectors, skills, toggleSkill } = useIntegrationStore();
+  const {
+    connectors,
+    skills,
+    toggleSkill,
+    marketplaceSkills,
+    isMarketplaceLoading,
+    fetchMarketplace,
+    installSkill,
+    uninstallSkill,
+    refreshInstalledSkills
+  } = useIntegrationStore();
   const [editingConnector, setEditingConnector] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  // Skills Tab States
+  const [skillsSubTab, setSkillsSubTab] = useState<"marketplace" | "installed">("marketplace");
+  const [skillsSearch, setSkillsSearch] = useState("");
+  const [skillsFilter, setSkillsFilter] = useState("All");
+
+  // Mapped skills from Registry to match Marketplace format
+  const registrySkills = HERMES_CAPABILITIES.SKILLS.map(skill => ({
+    identifier: skill.id,
+    name: skill.name,
+    description: skill.description,
+    source: 'official',
+    trust: 'builtin',
+    installed: Object.values(skills).some(s => s.name === skill.name || s.id === skill.id),
+    tags: [skill.id === 'skill-hub' ? 'System' : 'Official'],
+    icon: skill.icon
+  }));
+
+  // Combine backend skills with local registry skills
+  const displayMarketplaceSkills = marketplaceSkills.length > 0
+    ? marketplaceSkills
+    : registrySkills;
+
+  useEffect(() => {
+    if (activeTab === "skills") {
+      const source = skillsFilter === "Official" ? "official" : "all";
+      fetchMarketplace(skillsSearch, 1, 20, source);
+      refreshInstalledSkills();
+    }
+  }, [activeTab, skillsFilter]);
+
+  // Fetch local models status and system info via ModelManager IPC
+  const modelStore = useModelStore();
+
+  useEffect(() => {
+    if (activeTab === "models") {
+      modelStore.fetchCatalog();
+      modelStore.fetchSysResources();
+
+      // Subscribe to catalog updates from Main Process
+      let unsub: (() => void) | undefined;
+      if (window.hermesAPI?.onModelsCatalogUpdated) {
+        unsub = window.hermesAPI.onModelsCatalogUpdated((models: any[]) => {
+          modelStore.updateModels(models);
+        });
+      }
+      return () => unsub?.();
+    }
+  }, [activeTab]);
+
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && (window as any).hermesAPI?.onUpdaterStatus) {
+      const unsubscribe = (window as any).hermesAPI.onUpdaterStatus((data: any) => {
+        if (data.status === "up-to-date") {
+          setIsCheckingUpdate(false);
+          toast.success("You are on the latest version.");
+        } else if (data.status === "available" || data.status === "downloading" || data.status === "downloaded" || data.status === "error") {
+          setIsCheckingUpdate(false);
+          // autoUpdater.ts will handle the native dialogs for available/downloaded/error
+        }
+      });
+      return unsubscribe;
+    }
+  }, []);
+
+  const handleCheckForUpdates = async () => {
+    if (typeof window !== "undefined" && (window as any).hermesAPI?.checkForUpdates) {
+      setIsCheckingUpdate(true);
+      try {
+        await (window as any).hermesAPI.checkForUpdates();
+      } catch (error) {
+        setIsCheckingUpdate(false);
+        toast.error("Failed to check for updates");
+      }
+    } else {
+      toast.error("Updates are not supported in this environment");
+    }
+  };
 
   const handleConnect = async (connectorId: string) => {
     const connector = connectors[connectorId];
@@ -471,18 +565,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     label: string;
     icon: any;
   }[] = [
-    { id: "all", label: "All", icon: Brain },
-    { id: "about_me", label: "About Me", icon: User },
-    { id: "preferences", label: "Preferences & Style", icon: Sliders },
-    { id: "work", label: "Work & Career", icon: Briefcase },
-    { id: "coding_projects", label: "Coding & Projects", icon: Code },
-    { id: "learning_goals", label: "Learning & Goals", icon: GraduationCap },
-    { id: "relationships", label: "Relationships", icon: Users },
-    { id: "health_lifestyle", label: "Health & Lifestyle", icon: Activity },
-    { id: "hobbies_interests", label: "Hobbies & Interests", icon: Palette },
-    { id: "finance", label: "Finance & Wealth", icon: Wallet },
-    { id: "other", label: "Other", icon: Globe },
-  ];
+      { id: "all", label: "All", icon: Brain },
+      { id: "about_me", label: "About Me", icon: User },
+      { id: "preferences", label: "Preferences & Style", icon: Sliders },
+      { id: "work", label: "Work & Career", icon: Briefcase },
+      { id: "coding_projects", label: "Coding & Projects", icon: Code },
+      { id: "learning_goals", label: "Learning & Goals", icon: GraduationCap },
+      { id: "relationships", label: "Relationships", icon: Users },
+      { id: "health_lifestyle", label: "Health & Lifestyle", icon: Activity },
+      { id: "hobbies_interests", label: "Hobbies & Interests", icon: Palette },
+      { id: "finance", label: "Finance & Wealth", icon: Wallet },
+      { id: "other", label: "Other", icon: Globe },
+    ];
 
   useEffect(() => {
     setFormData(settings);
@@ -543,7 +637,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (!newMemoryContent.trim()) return;
     const target = (newMemoryCategory === "about_me" || newMemoryCategory === "preferences") ? "user" : "memory";
     await HermesApiClient.addMemory(target, newMemoryContent);
-    
+
     const res = await HermesApiClient.getMemory();
     const mapped = [
       ...(res.memory || []).map((content: string) => ({ id: content, content, category: 'other' })),
@@ -558,7 +652,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     // We used content as ID in the mapping above
     const target = memories.find(m => m.id === id)?.category === "about_me" ? "user" : "memory";
     await HermesApiClient.removeMemory(target, id);
-    
+
     const res = await HermesApiClient.getMemory();
     const mapped = [
       ...(res.memory || []).map((content: string) => ({ id: content, content, category: 'other' })),
@@ -898,11 +992,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             onClick={() =>
                               setFormData({ ...formData, theme: opt.id as any })
                             }
-                            className={`flex flex-col items-center justify-center py-5 px-2 rounded-2xl transition-all duration-150 ${
-                              formData.theme === opt.id
-                                ? "bg-pplx-card text-pplx-text shadow-xl shadow-black/5 ring-1 ring-black/5 dark:ring-white/10"
-                                : "bg-pplx-secondary/30 text-pplx-muted hover:bg-pplx-secondary/60 hover:text-pplx-text"
-                            }`}
+                            className={`flex flex-col items-center justify-center py-5 px-2 rounded-2xl transition-all duration-150 ${formData.theme === opt.id
+                              ? "bg-pplx-card text-pplx-text shadow-xl shadow-black/5 ring-1 ring-black/5 dark:ring-white/10"
+                              : "bg-pplx-secondary/30 text-pplx-muted hover:bg-pplx-secondary/60 hover:text-pplx-text"
+                              }`}
                           >
                             <opt.icon
                               size={22}
@@ -1052,6 +1145,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         isBeta={true}
                       />
                     </div>
+
+                    <div className="bg-pplx-card rounded-3xl px-6 py-4 shadow-sm mt-6 flex items-center justify-between">
+                      <div className="pr-6">
+                        <h4 className="text-base font-medium text-pplx-text flex items-center gap-2 mb-1">
+                          App Updates
+                        </h4>
+                        <p className="text-xs text-pplx-muted max-w-md leading-relaxed opacity-70">
+                          Check for and install the latest version of Hermes Agent.
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleCheckForUpdates}
+                        disabled={isCheckingUpdate}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${isCheckingUpdate
+                          ? "bg-pplx-secondary/50 text-pplx-muted cursor-wait"
+                          : "bg-pplx-text text-pplx-primary hover:opacity-90"
+                          }`}
+                      >
+                        {isCheckingUpdate ? (
+                          <>
+                            <RefreshCw size={16} className="animate-spin" />
+                            Checking...
+                          </>
+                        ) : (
+                          <>
+                            <Download size={16} />
+                            Check for Updates
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1077,22 +1201,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div className="bg-pplx-input p-1.5 rounded-2xl flex w-full md:w-auto">
                         <button
                           onClick={() => setLlmType("cloud")}
-                          className={`flex-1 md:flex-none px-8 py-3 rounded-xl text-xs md:text-sm font-bold transition-all duration-150 flex items-center justify-center gap-2 ${
-                            llmType === "cloud"
-                              ? "bg-pplx-text text-pplx-primary shadow-lg transform scale-[1.02]"
-                              : "bg-transparent text-pplx-muted hover:text-pplx-text"
-                          }`}
+                          className={`flex-1 md:flex-none px-8 py-3 rounded-xl text-xs md:text-sm font-bold transition-all duration-150 flex items-center justify-center gap-2 ${llmType === "cloud"
+                            ? "bg-pplx-text text-pplx-primary shadow-lg transform scale-[1.02]"
+                            : "bg-transparent text-pplx-muted hover:text-pplx-text"
+                            }`}
                         >
                           <Cloud size={16} />
                           <span>Cloud</span>
                         </button>
                         <button
+                          onClick={() => setLlmType("external")}
+                          className={`flex-1 md:flex-none px-8 py-3 rounded-xl text-xs md:text-sm font-bold transition-all duration-150 flex items-center justify-center gap-2 ${llmType === "external"
+                            ? "bg-pplx-text text-pplx-primary shadow-lg transform scale-[1.02]"
+                            : "bg-transparent text-pplx-muted hover:text-pplx-text"
+                            }`}
+                        >
+                          <Globe size={16} />
+                          <span>Extern (Ollama)</span>
+                        </button>
+                        <button
                           onClick={() => setLlmType("local")}
-                          className={`flex-1 md:flex-none px-8 py-3 rounded-xl text-xs md:text-sm font-bold transition-all duration-150 flex items-center justify-center gap-2 ${
-                            llmType === "local"
-                              ? "bg-pplx-text text-pplx-primary shadow-lg transform scale-[1.02]"
-                              : "bg-transparent text-pplx-muted hover:text-pplx-text"
-                          }`}
+                          className={`flex-1 md:flex-none px-8 py-3 rounded-xl text-xs md:text-sm font-bold transition-all duration-150 flex items-center justify-center gap-2 ${llmType === "local"
+                            ? "bg-pplx-text text-pplx-primary shadow-lg transform scale-[1.02]"
+                            : "bg-transparent text-pplx-muted hover:text-pplx-text"
+                            }`}
                         >
                           <Smartphone size={16} />
                           <span>Offline</span>
@@ -1100,349 +1232,386 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     </div>
 
-                  {llmType === "cloud" && (
-                    <div className="space-y-4 animate-fadeIn">
-                      {/* Gemini Card */}
-                      <div
-                        className={`group rounded-3xl p-6 transition-all duration-150 cursor-pointer select-none ${formData.modelProvider === ModelProvider.GEMINI ? "bg-pplx-card shadow-lg ring-1 ring-black/5 dark:ring-white/10" : "bg-pplx-card/50 hover:bg-pplx-card"}`}
-                      >
+                    {llmType === "cloud" && (
+                      <div className="space-y-4 animate-fadeIn">
+                        {/* Gemini Card */}
                         <div
-                          className="flex items-center justify-between"
-                          onClick={() =>
-                            setFormData({
-                              ...formData,
-                              modelProvider: ModelProvider.GEMINI,
-                            })
-                          }
+                          className={`group rounded-3xl p-6 transition-all duration-150 cursor-pointer select-none ${formData.modelProvider === ModelProvider.GEMINI ? "bg-pplx-card shadow-lg ring-1 ring-black/5 dark:ring-white/10" : "bg-pplx-card/50 hover:bg-pplx-card"}`}
                         >
-                          <div className="flex items-center gap-4">
-                            <div
-                              className="p-3 rounded-2xl bg-pplx-hover shadow-sm"
-                            >
-                              <Sparkles size={20} className="text-blue-500" />
-                            </div>
-                            <div>
-                              <h4 className="text-base font-semibold text-pplx-text">
-                                Google Gemini
-                              </h4>
-                              <p className="text-xs text-pplx-muted mt-0.5">
-                                Gemini 1.5 Pro & Flash
-                              </p>
-                            </div>
-                          </div>
-                          {formData.modelProvider === ModelProvider.GEMINI && (
-                            <div className="w-6 h-6 rounded-full bg-pplx-text flex items-center justify-center">
-                              <Check
-                                size={14}
-                                className="text-pplx-primary"
-                                strokeWidth={3}
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {formData.modelProvider === ModelProvider.GEMINI && (
-                          <div className="mt-5 pt-5 border-t border-pplx-border/50 animate-fadeIn">
-                            <div className="relative">
-                              <Key
-                                className="absolute left-4 top-4 text-pplx-muted opacity-50"
-                                size={16}
-                              />
-                              <input
-                                type="password"
-                                value={formData.geminiApiKey || ""}
-                                onChange={(e) =>
-                                  setFormData({
-                                    ...formData,
-                                    geminiApiKey: e.target.value,
-                                  })
-                                }
-                                placeholder="Override API Key (Optional)..."
-                                className="w-full bg-pplx-input rounded-2xl pl-11 pr-4 py-3.5 text-sm text-pplx-text outline-none font-mono"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* OpenRouter Card */}
-                      <div
-                        className={`group rounded-3xl p-6 transition-all duration-150 cursor-pointer select-none ${formData.modelProvider === ModelProvider.OPENROUTER ? "bg-pplx-card shadow-lg ring-1 ring-black/5 dark:ring-white/10" : "bg-pplx-card/50 hover:bg-pplx-card"}`}
-                      >
-                        <div
-                          className="flex items-center justify-between"
-                          onClick={() =>
-                            setFormData({
-                              ...formData,
-                              modelProvider: ModelProvider.OPENROUTER,
-                            })
-                          }
-                        >
-                          <div className="flex items-center gap-4">
-                            <div
-                              className="p-3 rounded-2xl bg-pplx-hover shadow-sm"
-                            >
-                              <Globe size={20} className="text-indigo-500" />
-                            </div>
-                            <div>
-                              <h4 className="text-base font-semibold text-pplx-text">
-                                OpenRouter
-                              </h4>
-                              <p className="text-xs text-pplx-muted mt-0.5">
-                                Aggregated Models
-                              </p>
-                            </div>
-                          </div>
-                          {formData.modelProvider ===
-                            ModelProvider.OPENROUTER && (
-                            <div className="w-6 h-6 rounded-full bg-pplx-text flex items-center justify-center">
-                              <Check
-                                size={14}
-                                className="text-pplx-primary"
-                                strokeWidth={3}
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {formData.modelProvider ===
-                          ModelProvider.OPENROUTER && (
-                          <div className="mt-5 pt-5 border-t border-pplx-border/50 space-y-3 animate-fadeIn">
-                            <div className="relative">
-                              <Key
-                                className="absolute left-4 top-4 text-pplx-muted opacity-50"
-                                size={16}
-                              />
-                              <input
-                                type="password"
-                                value={formData.openRouterApiKey}
-                                onChange={(e) =>
-                                  setFormData({
-                                    ...formData,
-                                    openRouterApiKey: e.target.value,
-                                  })
-                                }
-                                placeholder="sk-or-..."
-                                className="w-full bg-pplx-input rounded-2xl pl-11 pr-4 py-3.5 text-sm text-pplx-text outline-none font-mono"
-                              />
-                            </div>
-                            <div className="relative">
-                              <Activity
-                                className="absolute left-4 top-4 text-pplx-muted opacity-50"
-                                size={16}
-                              />
-                              <input
-                                list="openrouter-models"
-                                type="text"
-                                value={formData.openRouterModelId}
-                                onChange={(e) =>
-                                  setFormData({
-                                    ...formData,
-                                    openRouterModelId: e.target.value,
-                                  })
-                                }
-                                placeholder="Select or type model ID..."
-                                className="w-full bg-pplx-input rounded-2xl pl-11 pr-4 py-3.5 text-sm text-pplx-text outline-none font-mono"
-                              />
-                              <datalist id="openrouter-models">
-                                {OPENROUTER_PRESETS.map((model) => (
-                                  <option key={model} value={model} />
-                                ))}
-                              </datalist>
-                              <div className="absolute right-4 top-4 text-[10px] text-pplx-muted font-bold opacity-50 uppercase pointer-events-none">
-                                Model ID
+                          <div
+                            className="flex items-center justify-between"
+                            onClick={() =>
+                              setFormData({
+                                ...formData,
+                                modelProvider: ModelProvider.GEMINI,
+                              })
+                            }
+                          >
+                            <div className="flex items-center gap-4">
+                              <div
+                                className="p-3 rounded-2xl bg-pplx-hover shadow-sm"
+                              >
+                                <Sparkles size={20} className="text-blue-500" />
+                              </div>
+                              <div>
+                                <h4 className="text-base font-semibold text-pplx-text">
+                                  Google Gemini
+                                </h4>
+                                <p className="text-xs text-pplx-muted mt-0.5">
+                                  Gemini 1.5 Pro & Flash
+                                </p>
                               </div>
                             </div>
+                            {formData.modelProvider === ModelProvider.GEMINI && (
+                              <div className="w-6 h-6 rounded-full bg-pplx-text flex items-center justify-center">
+                                <Check
+                                  size={14}
+                                  className="text-pplx-primary"
+                                  strokeWidth={3}
+                                />
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
 
-                      {/* OpenAI Card */}
-                      <div
-                        className={`group rounded-3xl p-6 transition-all duration-150 cursor-pointer select-none ${formData.modelProvider === ModelProvider.OPENAI ? "bg-pplx-card shadow-lg ring-1 ring-black/5 dark:ring-white/10" : "bg-pplx-card/50 hover:bg-pplx-card"}`}
-                      >
-                        <div
-                          className="flex items-center justify-between"
-                          onClick={() =>
-                            setFormData({
-                              ...formData,
-                              modelProvider: ModelProvider.OPENAI,
-                            })
-                          }
-                        >
-                          <div className="flex items-center gap-4">
-                            <div
-                              className="p-3 rounded-2xl bg-pplx-hover shadow-sm"
-                            >
-                              <Zap size={20} className="text-emerald-500" />
-                            </div>
-                            <div>
-                              <h4 className="text-base font-semibold text-pplx-text">
-                                OpenAI
-                              </h4>
-                              <p className="text-xs text-pplx-muted mt-0.5">
-                                GPT-4o & GPT-3.5
-                              </p>
-                            </div>
-                          </div>
-                          {formData.modelProvider === ModelProvider.OPENAI && (
-                            <div className="w-6 h-6 rounded-full bg-pplx-text flex items-center justify-center">
-                              <Check
-                                size={14}
-                                className="text-pplx-primary"
-                                strokeWidth={3}
-                              />
+                          {formData.modelProvider === ModelProvider.GEMINI && (
+                            <div className="mt-5 pt-5 border-t border-pplx-border/50 animate-fadeIn">
+                              <div className="relative">
+                                <Key
+                                  className="absolute left-4 top-4 text-pplx-muted opacity-50"
+                                  size={16}
+                                />
+                                <input
+                                  type="password"
+                                  value={formData.geminiApiKey || ""}
+                                  onChange={(e) =>
+                                    setFormData({
+                                      ...formData,
+                                      geminiApiKey: e.target.value,
+                                    })
+                                  }
+                                  placeholder="Override API Key (Optional)..."
+                                  className="w-full bg-pplx-input rounded-2xl pl-11 pr-4 py-3.5 text-sm text-pplx-text outline-none font-mono"
+                                />
+                              </div>
                             </div>
                           )}
                         </div>
 
-                        {formData.modelProvider === ModelProvider.OPENAI && (
-                          <div className="mt-5 pt-5 border-t border-pplx-border/50 space-y-3 animate-fadeIn">
-                            <div className="relative">
-                              <Key
-                                className="absolute left-4 top-4 text-pplx-muted opacity-50"
-                                size={16}
-                              />
-                              <input
-                                type="password"
-                                value={formData.openAiApiKey}
-                                onChange={(e) =>
-                                  setFormData({
-                                    ...formData,
-                                    openAiApiKey: e.target.value,
-                                  })
-                                }
-                                placeholder="sk-..."
-                                className="w-full bg-pplx-input rounded-2xl pl-11 pr-4 py-3.5 text-sm text-pplx-text outline-none font-mono"
-                              />
+                        {/* OpenRouter Card */}
+                        <div
+                          className={`group rounded-3xl p-6 transition-all duration-150 cursor-pointer select-none ${formData.modelProvider === ModelProvider.OPENROUTER ? "bg-pplx-card shadow-lg ring-1 ring-black/5 dark:ring-white/10" : "bg-pplx-card/50 hover:bg-pplx-card"}`}
+                        >
+                          <div
+                            className="flex items-center justify-between"
+                            onClick={() =>
+                              setFormData({
+                                ...formData,
+                                modelProvider: ModelProvider.OPENROUTER,
+                              })
+                            }
+                          >
+                            <div className="flex items-center gap-4">
+                              <div
+                                className="p-3 rounded-2xl bg-pplx-hover shadow-sm"
+                              >
+                                <Globe size={20} className="text-indigo-500" />
+                              </div>
+                              <div>
+                                <h4 className="text-base font-semibold text-pplx-text">
+                                  OpenRouter
+                                </h4>
+                                <p className="text-xs text-pplx-muted mt-0.5">
+                                  Aggregated Models
+                                </p>
+                              </div>
                             </div>
-                            <div className="relative">
-                              <Activity
-                                className="absolute left-4 top-4 text-pplx-muted opacity-50"
-                                size={16}
-                              />
-                              <input
-                                type="text"
-                                value={formData.openAiModelId}
-                                onChange={(e) =>
-                                  setFormData({
-                                    ...formData,
-                                    openAiModelId: e.target.value,
-                                  })
-                                }
-                                placeholder="gpt-4o"
-                                className="w-full bg-pplx-input rounded-2xl pl-11 pr-4 py-3.5 text-sm text-pplx-text outline-none font-mono"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {llmType === "local" && (
-                    <div className="animate-fadeIn pb-12">
-                      <div className="bg-pplx-card rounded-3xl p-6 mb-6 shadow-sm border border-pplx-border/50">
-                        <div className="flex items-center gap-3 mb-2">
-                          <Smartphone size={20} className="text-pplx-accent" />
-                          <h3 className="text-lg font-bold text-pplx-text">
-                            Offline Model Store
-                          </h3>
-                        </div>
-                        <p className="text-sm text-pplx-muted leading-relaxed">
-                          Download highly optimized small language models
-                          (1B-7B) to run locally on your device without
-                          internet.
-                        </p>
-                      </div>
-
-                      {(() => {
-                        const support = checkLocalModelSupport();
-
-                        return (
-                          <>
-                            {!support.supported && (
-                              <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-5 mb-6">
-                                <div className="flex items-start gap-3">
-                                  <AlertTriangle
-                                    size={20}
-                                    className="text-red-400 shrink-0 mt-0.5"
+                            {formData.modelProvider ===
+                              ModelProvider.OPENROUTER && (
+                                <div className="w-6 h-6 rounded-full bg-pplx-text flex items-center justify-center">
+                                  <Check
+                                    size={14}
+                                    className="text-pplx-primary"
+                                    strokeWidth={3}
                                   />
-                                  <div>
-                                    <p className="text-sm font-bold text-red-400 mb-1">
-                                      {support.reason}
-                                    </p>
-                                    <p className="text-xs text-red-300/80 leading-relaxed">
-                                      {support.details}
-                                    </p>
+                                </div>
+                              )}
+                          </div>
+
+                          {formData.modelProvider ===
+                            ModelProvider.OPENROUTER && (
+                              <div className="mt-5 pt-5 border-t border-pplx-border/50 space-y-3 animate-fadeIn">
+                                <div className="relative">
+                                  <Key
+                                    className="absolute left-4 top-4 text-pplx-muted opacity-50"
+                                    size={16}
+                                  />
+                                  <input
+                                    type="password"
+                                    value={formData.openRouterApiKey}
+                                    onChange={(e) =>
+                                      setFormData({
+                                        ...formData,
+                                        openRouterApiKey: e.target.value,
+                                      })
+                                    }
+                                    placeholder="sk-or-..."
+                                    className="w-full bg-pplx-input rounded-2xl pl-11 pr-4 py-3.5 text-sm text-pplx-text outline-none font-mono"
+                                  />
+                                </div>
+                                <div className="relative">
+                                  <Activity
+                                    className="absolute left-4 top-4 text-pplx-muted opacity-50"
+                                    size={16}
+                                  />
+                                  <input
+                                    list="openrouter-models"
+                                    type="text"
+                                    value={formData.openRouterModelId}
+                                    onChange={(e) =>
+                                      setFormData({
+                                        ...formData,
+                                        openRouterModelId: e.target.value,
+                                      })
+                                    }
+                                    placeholder="Select or type model ID..."
+                                    className="w-full bg-pplx-input rounded-2xl pl-11 pr-4 py-3.5 text-sm text-pplx-text outline-none font-mono"
+                                  />
+                                  <datalist id="openrouter-models">
+                                    {OPENROUTER_PRESETS.map((model) => (
+                                      <option key={model} value={model} />
+                                    ))}
+                                  </datalist>
+                                  <div className="absolute right-4 top-4 text-[10px] text-pplx-muted font-bold opacity-50 uppercase pointer-events-none">
+                                    Model ID
                                   </div>
                                 </div>
                               </div>
                             )}
+                        </div>
 
-                            <div className="space-y-4">
-                              <h4 className="text-xs font-bold text-pplx-muted uppercase tracking-widest opacity-60 ml-1">
-                                Available Models
-                              </h4>
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {AVAILABLE_OFFLINE_MODELS.map((model) => {
-                                  const downloadedModel =
-                                    formData.localModels.find(
-                                      (m) => m.id === model.id,
-                                    );
-                                  const isDownloaded = !!downloadedModel;
-                                  const isActive =
-                                    formData.activeLocalModelId === model.id;
-                                  const progress =
-                                    downloadProgress[model.id] || 0;
-
-                                  return (
-                                    <OfflineModelCard
-                                      key={model.id}
-                                      model={model}
-                                      isDownloaded={isDownloaded}
-                                      isActive={isActive}
-                                      progress={progress}
-                                      isSupported={support.supported}
-                                      unsupportedReason={
-                                        !support.supported ? support.reason : ""
-                                      }
-                                      onDownload={() =>
-                                        handleDownloadModel(model)
-                                      }
-                                      onSelect={() =>
-                                        setFormData({
-                                          ...formData,
-                                          activeLocalModelId: model.id,
-                                          modelProvider: ModelProvider.LOCAL,
-                                        })
-                                      }
-                                      onDelete={() =>
-                                        handleDeleteModel(model.id)
-                                      }
-                                    />
-                                  );
-                                })}
+                        {/* OpenAI Card */}
+                        <div
+                          className={`group rounded-3xl p-6 transition-all duration-150 cursor-pointer select-none ${formData.modelProvider === ModelProvider.OPENAI ? "bg-pplx-card shadow-lg ring-1 ring-black/5 dark:ring-white/10" : "bg-pplx-card/50 hover:bg-pplx-card"}`}
+                        >
+                          <div
+                            className="flex items-center justify-between"
+                            onClick={() =>
+                              setFormData({
+                                ...formData,
+                                modelProvider: ModelProvider.OPENAI,
+                              })
+                            }
+                          >
+                            <div className="flex items-center gap-4">
+                              <div
+                                className="p-3 rounded-2xl bg-pplx-hover shadow-sm"
+                              >
+                                <Zap size={20} className="text-emerald-500" />
+                              </div>
+                              <div>
+                                <h4 className="text-base font-semibold text-pplx-text">
+                                  OpenAI
+                                </h4>
+                                <p className="text-xs text-pplx-muted mt-0.5">
+                                  GPT-4o & GPT-3.5
+                                </p>
                               </div>
                             </div>
-                          </>
-                        );
-                      })()}
+                            {formData.modelProvider === ModelProvider.OPENAI && (
+                              <div className="w-6 h-6 rounded-full bg-pplx-text flex items-center justify-center">
+                                <Check
+                                  size={14}
+                                  className="text-pplx-primary"
+                                  strokeWidth={3}
+                                />
+                              </div>
+                            )}
+                          </div>
 
-                      {formData.localModels.length === 0 && (
-                        <div className="mt-8 text-center p-6 border-2 border-dashed border-pplx-border/50 rounded-2xl opacity-60">
-                          <Cloud
-                            size={32}
-                            className="mx-auto text-pplx-muted mb-2"
-                          />
-                          <span className="text-xs font-medium text-pplx-muted">
-                            No models downloaded yet.
-                          </span>
+                          {formData.modelProvider === ModelProvider.OPENAI && (
+                            <div className="mt-5 pt-5 border-t border-pplx-border/50 space-y-3 animate-fadeIn">
+                              <div className="relative">
+                                <Key
+                                  className="absolute left-4 top-4 text-pplx-muted opacity-50"
+                                  size={16}
+                                />
+                                <input
+                                  type="password"
+                                  value={formData.openAiApiKey}
+                                  onChange={(e) =>
+                                    setFormData({
+                                      ...formData,
+                                      openAiApiKey: e.target.value,
+                                    })
+                                  }
+                                  placeholder="sk-..."
+                                  className="w-full bg-pplx-input rounded-2xl pl-11 pr-4 py-3.5 text-sm text-pplx-text outline-none font-mono"
+                                />
+                              </div>
+                              <div className="relative">
+                                <Activity
+                                  className="absolute left-4 top-4 text-pplx-muted opacity-50"
+                                  size={16}
+                                />
+                                <input
+                                  type="text"
+                                  value={formData.openAiModelId}
+                                  onChange={(e) =>
+                                    setFormData({
+                                      ...formData,
+                                      openAiModelId: e.target.value,
+                                    })
+                                  }
+                                  placeholder="gpt-4o"
+                                  className="w-full bg-pplx-input rounded-2xl pl-11 pr-4 py-3.5 text-sm text-pplx-text outline-none font-mono"
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    )}
+
+                    {llmType === "external" && (
+                      <div className="animate-fadeIn space-y-6 pb-12">
+                        <div className="bg-pplx-card rounded-3xl p-6 shadow-sm border border-pplx-border/50">
+                          <div className="flex items-center gap-3 mb-2">
+                            <Globe size={20} className="text-pplx-accent" />
+                            <h3 className="text-lg font-bold text-pplx-text">Server Local Extern</h3>
+                          </div>
+                          <p className="text-sm text-pplx-muted leading-relaxed">
+                            Conectează-te la o instanță Ollama sau LM Studio existentă.
+                          </p>
+                        </div>
+
+                        <InputGroup label="Endpoint URL" description="Implicit: http://localhost:11434">
+                          <input
+                            type="text"
+                            value={formData.activeLocalModel?.endpoint || "http://localhost:11434"}
+                            onChange={(e) => setFormData({
+                              ...formData,
+                              modelProvider: ModelProvider.LOCAL,
+                              activeLocalModel: {
+                                ...formData.activeLocalModel!,
+                                endpoint: e.target.value
+                              }
+                            })}
+                            className="w-full bg-pplx-input rounded-2xl px-5 py-4 text-sm text-pplx-text outline-none focus:ring-1 focus:ring-pplx-accent"
+                          />
+                        </InputGroup>
+                      </div>
+                    )}
+
+                    {llmType === "local" && (
+                      <div className="animate-fadeIn pb-12">
+                        <div className="bg-pplx-card rounded-3xl p-6 mb-6 shadow-sm border border-pplx-border/50">
+                          <div className="flex items-center gap-3 mb-2">
+                            <Smartphone size={20} className="text-pplx-accent" />
+                            <h3 className="text-lg font-bold text-pplx-text">
+                              Offline Model Store
+                            </h3>
+                          </div>
+                          <p className="text-sm text-pplx-muted leading-relaxed">
+                            Download highly optimized small language models
+                            (1B-7B) to run locally on your device without
+                            internet.
+                          </p>
+                        </div>
+
+                        {(() => {
+                          const support = {
+                            supported: modelStore.sysResources ? modelStore.sysResources.totalRamMB >= 4000 : true,
+                            reason: "Insufficient RAM",
+                            details: "Local models require at least 4GB of RAM to run efficiently."
+                          };
+
+                          return (
+                            <>
+                              {!support.supported && (
+                                <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-5 mb-6">
+                                  <div className="flex items-start gap-3">
+                                    <AlertTriangle
+                                      size={20}
+                                      className="text-red-400 shrink-0 mt-0.5"
+                                    />
+                                    <div>
+                                      <p className="text-sm font-bold text-red-400 mb-1">
+                                        {support.reason}
+                                      </p>
+                                      <p className="text-xs text-red-300/80 leading-relaxed">
+                                        {support.details}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="space-y-4">
+                                <h4 className="text-xs font-bold text-pplx-muted uppercase tracking-widest opacity-60 ml-1">
+                                  Available Models
+                                </h4>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {modelStore.models.map((model) => {
+                                    const isDownloaded = model.status === 'installed' || model.status === 'active';
+                                    const isActive = model.status === 'active';
+                                    const progress = model.progress;
+
+                                    const isSupported = modelStore.sysResources ? modelStore.sysResources.totalRamMB >= model.minRamMB : true;
+                                    const unsupportedReason = `Requires ${model.minRamMB}MB RAM (You have ${modelStore.sysResources?.totalRamMB || 0}MB)`;
+
+                                    return (
+                                      <OfflineModelCard
+                                        key={model.id}
+                                        model={model}
+                                        isDownloaded={isDownloaded}
+                                        isActive={isActive}
+                                        progress={progress}
+                                        isSupported={isSupported}
+                                        unsupportedReason={!isSupported ? unsupportedReason : ""}
+                                        onDownload={() => modelStore.downloadModel(model.id)}
+                                        onSelect={() => {
+                                          modelStore.startRuntime(model.id).then(() => {
+                                            setFormData({
+                                              ...formData,
+                                              modelProvider: ModelProvider.LOCAL,
+                                            });
+                                            toast.success(`${model.name} este acum activ.`);
+                                          }).catch(err => {
+                                            toast.error(`Eroare la încărcare: ${err}`);
+                                          });
+                                        }}
+                                        onDelete={() => {
+                                          if (confirm(`Sigur vrei să ștergi ${model.name}?`)) {
+                                            modelStore.deleteModel(model.id).then(() => {
+                                              toast.success("Model șters cu succes.");
+                                            }).catch(err => {
+                                              toast.error(`Eroare la ștergere: ${err}`);
+                                            });
+                                          }
+                                        }}
+                                      />
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </>
+                          );
+                        })()}
+
+                        {formData.localModels.length === 0 && (
+                          <div className="mt-8 text-center p-6 border-2 border-dashed border-pplx-border/50 rounded-2xl opacity-60">
+                            <Cloud
+                              size={32}
+                              className="mx-auto text-pplx-muted mb-2"
+                            />
+                            <span className="text-xs font-medium text-pplx-muted">
+                              No models downloaded yet.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* --- VOICE CATEGORY --- */}
@@ -1537,10 +1706,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* --- MEMORY CONFIG CATEGORY --- */}
                   <div className="space-y-6 pt-10 pb-6 border-t border-pplx-border/20">
                     <div className="px-2">
-                       <h2 className="text-xl font-bold text-pplx-text mb-2">Memory Settings</h2>
-                       <p className="text-sm text-pplx-muted">
+                      <h2 className="text-xl font-bold text-pplx-text mb-2">Memory Settings</h2>
+                      <p className="text-sm text-pplx-muted">
                         Processor model for context maintenance and memory management.
-                       </p>
+                      </p>
                     </div>
 
                     <InputGroup label="Processor Provider" description="Select the platform responsible for context.">
@@ -1951,7 +2120,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   <div className="grid gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2">
                     {/* Tavily Search */}
-                    <div 
+                    <div
                       className="border border-pplx-border rounded-2xl p-5 flex flex-col transition-all bg-pplx-card hover:border-pplx-border/80 shadow-sm"
                     >
                       <div className="flex items-start justify-between mb-4">
@@ -1968,7 +2137,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           </span>
                         )}
                       </div>
-                      
+
                       <h3 className="text-lg font-medium text-pplx-text mb-1 flex items-center justify-between">
                         Tavily Search
                         {formData.searchProvider === "tavily" && formData.tavilyApiKey && (
@@ -2041,7 +2210,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     {/* Brave Search */}
-                    <div 
+                    <div
                       className="border border-pplx-border rounded-2xl p-5 flex flex-col transition-all bg-pplx-card hover:border-pplx-border/80 shadow-sm"
                     >
                       <div className="flex items-start justify-between mb-4">
@@ -2058,7 +2227,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           </span>
                         )}
                       </div>
-                      
+
                       <h3 className="text-lg font-medium text-pplx-text mb-1 flex items-center justify-between">
                         Brave Search
                         {formData.searchProvider === "brave" && formData.braveApiKey && (
@@ -2146,7 +2315,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </span>
                           )}
                         </div>
-                        
+
                         <h3 className="text-lg font-medium text-pplx-text mb-1">{connector.name}</h3>
                         <p className="text-sm text-pplx-muted mb-6 flex-1 leading-relaxed">
                           {connector.description}
@@ -2203,55 +2372,216 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               {/* --- SKILLS TAB --- */}
               {activeTab === "skills" && (
-                <div className="space-y-8 animate-fadeIn">
-                  <div className="hidden md:block">
-                    <SectionHeader
-                      title="Skills"
-                      desc="Enable specific capabilities for your AI agent."
-                    />
+                <div className="space-y-6 animate-fadeIn pb-10">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h2 className="text-2xl font-bold text-pplx-text">Skills</h2>
+                      <p className="text-sm text-pplx-muted mt-1 opacity-70">
+                        Install and manage skills to unlock new capabilities for SOLO.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => toast.success("Skill upload coming soon!")}
+                      className="flex items-center gap-2 px-4 py-2 bg-pplx-secondary hover:bg-pplx-hover text-pplx-text rounded-xl text-sm font-medium transition-all shadow-sm self-start md:self-center"
+                    >
+                      <Plus size={16} />
+                      Upload Skill
+                    </button>
                   </div>
 
-                  <div className="space-y-4">
-                    {Object.values(skills).map((skill) => {
-                      const missingConnectors = skill.requiredConnectors.filter(
-                        (connId) => connectors[connId]?.status !== 'connected'
-                      );
-                      
-                      return (
-                        <div key={skill.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 md:p-5 border border-pplx-border rounded-2xl bg-pplx-card shadow-sm gap-4">
-                          <div className="flex items-start gap-4 flex-1 min-w-0">
-                            <div className="p-2.5 bg-pplx-hover text-pplx-text rounded-xl shadow-sm mt-0.5 shrink-0">
-                              {renderIcon(skill.icon)}
-                            </div>
-                            <div className="min-w-0">
-                              <h3 className="text-base font-medium text-pplx-text flex flex-wrap items-center gap-2">
-                                {skill.name}
-                                {missingConnectors.length > 0 && (
-                                  <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                                    Requires: {missingConnectors.map(id => connectors[id]?.name || id).join(', ')}
-                                  </span>
-                                )}
-                              </h3>
-                              <p className="text-sm text-pplx-muted mt-1 leading-relaxed">
-                                {skill.description}
-                              </p>
-                            </div>
+                  {/* Tabs and Search Bar */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pt-4 border-b border-pplx-border/30 pb-4">
+                    <div className="flex items-center gap-8">
+                      <button
+                        onClick={() => setSkillsSubTab("marketplace")}
+                        className={`text-sm font-bold transition-all relative py-1 ${skillsSubTab === "marketplace" ? "text-pplx-text" : "text-pplx-muted hover:text-pplx-text"
+                          }`}
+                      >
+                        Marketplace
+                        {skillsSubTab === "marketplace" && (
+                          <div className="absolute -bottom-[17px] left-0 right-0 h-0.5 bg-pplx-text" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setSkillsSubTab("installed")}
+                        className={`text-sm font-bold transition-all relative py-1 flex items-center gap-2 ${skillsSubTab === "installed" ? "text-pplx-text" : "text-pplx-muted hover:text-pplx-text"
+                          }`}
+                      >
+                        Installed
+                        <span className="bg-pplx-secondary text-[10px] px-1.5 py-0.5 rounded-full opacity-60">
+                          {Object.keys(skills).length}
+                        </span>
+                        {skillsSubTab === "installed" && (
+                          <div className="absolute -bottom-[17px] left-0 right-0 h-0.5 bg-pplx-text" />
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="relative flex-1 max-w-md">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-pplx-muted" size={16} />
+                      <input
+                        type="text"
+                        placeholder="Search"
+                        value={skillsSearch}
+                        onChange={(e) => {
+                          setSkillsSearch(e.target.value);
+                          const source = skillsFilter === "Official" ? "official" : "all";
+                          fetchMarketplace(e.target.value, 1, 20, source);
+                        }}
+                        className="w-full bg-pplx-input border-none rounded-xl pl-10 pr-4 py-2 text-sm text-pplx-text outline-none transition-all placeholder-pplx-muted/50 focus:ring-1 focus:ring-pplx-border"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Filter Chips */}
+                  <div className="flex flex-wrap items-center gap-2 pt-2">
+                    {["All", "Official", "Developer Tools", "Data Analysis", "UI Design", "Content Creation", "Productivity"].map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => {
+                          setSkillsFilter(cat);
+                          // Trigger fetch for Official specifically, others are local tags
+                          if (cat === "Official") fetchMarketplace(skillsSearch, 1, 20, "official");
+                          else if (skillsFilter === "Official") fetchMarketplace(skillsSearch, 1, 20, "all");
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${skillsFilter === cat
+                          ? "bg-pplx-text text-pplx-card"
+                          : "bg-pplx-secondary/30 text-pplx-muted hover:bg-pplx-secondary/50"
+                          }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Skills Grid */}
+                  <div className="pt-4 space-y-8">
+                    {skillsSubTab === "marketplace" ? (
+                      <div className="space-y-6">
+                        <h3 className="text-sm font-bold text-pplx-text opacity-60 uppercase tracking-widest">{skillsFilter}</h3>
+                        {isMarketplaceLoading && displayMarketplaceSkills.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-20 text-pplx-muted gap-4">
+                            <div className="w-10 h-10 border-4 border-pplx-secondary border-t-pplx-text rounded-full animate-spin" />
+                            <p>Loading marketplace...</p>
                           </div>
-                          
-                          <div className="sm:ml-4 flex-shrink-0 self-end sm:self-center">
-                            <label className="relative inline-flex items-center cursor-pointer">
-                              <input
-                                type="checkbox"
-                                className="sr-only peer"
-                                checked={skill.isActive}
-                                onChange={(e) => toggleSkill(skill.id, e.target.checked)}
-                              />
-                              <div className="w-11 h-6 bg-pplx-hover peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pplx-accent"></div>
-                            </label>
+                        ) : displayMarketplaceSkills.length > 0 ? (
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {displayMarketplaceSkills
+                              .filter(s => {
+                                if (skillsFilter === "All" || skillsFilter === "Official") return true;
+                                return s.tags?.some(t => t.toLowerCase().includes(skillsFilter.toLowerCase())) ||
+                                  s.description?.toLowerCase().includes(skillsFilter.toLowerCase());
+                              })
+                              .map((mSkill) => (
+                                <div key={mSkill.identifier} className="group p-5 bg-pplx-card border border-pplx-border/30 rounded-2xl flex items-start gap-5 hover:border-pplx-border/80 transition-all shadow-sm relative overflow-hidden">
+                                  {mSkill.trust === 'builtin' && (
+                                    <div className="absolute top-0 right-0 w-16 h-16 pointer-events-none">
+                                      <div className="absolute top-2 -right-6 bg-pplx-text text-pplx-card text-[8px] font-bold py-1 px-8 rotate-45">SOLO</div>
+                                    </div>
+                                  )}
+                                  <div className="w-12 h-12 rounded-xl bg-pplx-secondary flex items-center justify-center shrink-0 text-pplx-text shadow-inner">
+                                    {mSkill.source === 'official' ? <ShieldCheck size={24} className="text-pplx-text opacity-90" /> : <Zap size={24} className="opacity-70" />}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <h4 className="text-base font-bold text-pplx-text truncate">{mSkill.name}</h4>
+                                        {(mSkill.trust === 'builtin' || mSkill.trust === 'trusted' || mSkill.source === 'official') && (
+                                          <CheckCircle size={14} className="text-pplx-text shrink-0" fill="currentColor" fillOpacity="0.2" />
+                                        )}
+                                      </div>
+                                      <button
+                                        onClick={() => installSkill(mSkill)}
+                                        disabled={mSkill.installed}
+                                        className={`p-2 rounded-lg transition-all ${mSkill.installed
+                                          ? "text-green-500 bg-green-500/10 cursor-default"
+                                          : "text-pplx-text bg-pplx-secondary hover:bg-pplx-hover"
+                                          }`}
+                                      >
+                                        {mSkill.installed ? <Check size={18} /> : <Plus size={18} />}
+                                      </button>
+                                    </div>
+                                    <p className="text-xs text-pplx-muted mt-1.5 leading-relaxed line-clamp-2 min-h-[32px]">
+                                      {mSkill.description}
+                                    </p>
+                                    <div className="mt-3 flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-pplx-muted opacity-50 font-medium">by</span>
+                                        <span className="text-[10px] text-pplx-text font-bold opacity-70">{mSkill.source === 'official' ? 'Hermes Official' : (mSkill.source || "Community")}</span>
+                                      </div>
+                                      {mSkill.tags && mSkill.tags.length > 0 && (
+                                        <span className="text-[9px] bg-pplx-secondary/50 text-pplx-muted px-1.5 py-0.5 rounded opacity-60">
+                                          {mSkill.tags[0]}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
                           </div>
-                        </div>
-                      );
-                    })}
+                        ) : (
+                          <div className="text-center py-20 text-pplx-muted">
+                            <p>No skills found in the marketplace.</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {Object.values(skills)
+                          .filter(s => skillsSearch === "" || s.name.toLowerCase().includes(skillsSearch.toLowerCase()))
+                          .map((skill) => {
+                            const missingConnectors = skill.requiredConnectors.filter(
+                              (connId) => connectors[connId]?.status !== 'connected'
+                            );
+
+                            return (
+                              <div key={skill.id} className="p-5 bg-pplx-card border border-pplx-border/30 rounded-2xl flex items-start gap-5 hover:border-pplx-border/80 transition-all shadow-sm">
+                                <div className="w-12 h-12 rounded-xl bg-pplx-secondary flex items-center justify-center shrink-0 text-pplx-text shadow-inner">
+                                  {renderIcon(skill.icon)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <h4 className="text-base font-bold text-pplx-text truncate flex items-center gap-2">
+                                        {skill.name}
+                                        {missingConnectors.length > 0 && (
+                                          <AlertTriangle size={14} className="text-amber-500" />
+                                        )}
+                                      </h4>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <button
+                                        onClick={() => uninstallSkill(skill.name)}
+                                        className="p-1.5 text-pplx-muted hover:text-red-400 transition-colors"
+                                        title="Uninstall"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                      <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          className="sr-only peer"
+                                          checked={skill.isActive}
+                                          onChange={(e) => toggleSkill(skill.id, e.target.checked)}
+                                        />
+                                        <div className="w-9 h-5 bg-pplx-hover peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-pplx-text"></div>
+                                      </label>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-pplx-muted mt-1.5 leading-relaxed line-clamp-2 min-h-[32px]">
+                                    {skill.description}
+                                  </p>
+                                  {missingConnectors.length > 0 && (
+                                    <p className="text-[9px] font-bold text-amber-500 mt-2 uppercase tracking-wider">
+                                      Needs: {missingConnectors.map(id => connectors[id]?.name || id).join(', ')}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

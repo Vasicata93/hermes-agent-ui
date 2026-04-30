@@ -496,6 +496,17 @@ function registerIpcHandlers(pythonManager2) {
   electron.ipcMain.on("window:close", (event) => {
     electron.BrowserWindow.fromWebContents(event.sender)?.close();
   });
+  electron.ipcMain.handle("hermes:check-for-updates", async () => {
+    try {
+      const result = await electronUpdater.autoUpdater.checkForUpdates();
+      return { ok: true, result };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+  electron.ipcMain.handle("hermes:install-update", () => {
+    electronUpdater.autoUpdater.quitAndInstall();
+  });
 }
 function setupAutoUpdater(mainWindow2) {
   electronUpdater.autoUpdater.autoDownload = false;

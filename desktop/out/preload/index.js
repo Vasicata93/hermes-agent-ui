@@ -20,6 +20,9 @@ const hermesAPI = {
   minimize: () => electron.ipcRenderer.send("window:minimize"),
   maximize: () => electron.ipcRenderer.send("window:maximize"),
   close: () => electron.ipcRenderer.send("window:close"),
+  // Auto Updater
+  checkForUpdates: () => electron.ipcRenderer.invoke("hermes:check-for-updates"),
+  installUpdate: () => electron.ipcRenderer.invoke("hermes:install-update"),
   // Event listeners (returns unsubscribe function)
   onBackendStatus: (callback) => {
     const handler = (_event, data) => callback(data);

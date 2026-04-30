@@ -6,9 +6,12 @@
  */
 
 import { ipcMain, BrowserWindow } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { PythonManager } from './pythonManager'
+import os from 'os'
+import { ModelManager } from './modelManager'
 
-export function registerIpcHandlers(pythonManager: PythonManager): void {
+export function registerIpcHandlers(pythonManager: PythonManager, modelManager: ModelManager): void {
   /**
    * Generic API request proxy: renderer sends { method, endpoint, body }
    * and we forward it to the local backend.
@@ -255,4 +258,108 @@ export function registerIpcHandlers(pythonManager: PythonManager): void {
   ipcMain.on('window:close', (event) => {
     BrowserWindow.fromWebContents(event.sender)?.close()
   })
+
+  /**
+   * Auto Updater
+   */
+  ipcMain.handle('hermes:check-for-updates', async () => {
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      return { ok: true, result }
+    } catch (error) {
+      return { ok: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('hermes:install-update', () => {
+    autoUpdater.quitAndInstall()
+  })
+
+  /**
+   * Get system info (RAM, CPU) for model compatibility checks
+   */
+  ipcMain.handle('hermes:get-system-info', async () => {
+    return {
+      totalMemory: os.totalmem(),
+      freeMemory: os.freemem(),
+      platform: os.platform(),
+      arch: os.arch(),
+      cpus: os.cpus().length
+    }
+  })
+
+  // ----------------------------------------------------
+  // Local Models (node-llama-cpp)
+  // ----------------------------------------------------
+  
+  ipcMain.handle('models:catalog', () => {
+    return modelManager.getCatalog()
+  })
+  
+  ipcMain.handle('models:sys-resources', () => {
+    return modelManager.getSystemResources()
+  })
+  
+  ipcMain.handle('models:download', async (event, args: { id: string }) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window) return { ok: false, error: 'No window found' }
+    try {
+      // Async so we don't block the handler completely, but it will stream updates
+      modelManager.downloadModel(args.id, window).catch(e => console.error('Download model error:', e))
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: String(error) }
+    }
+  })
+  
+  ipcMain.handle('models:stop-download', (_event, args: { id: string }) => {
+    modelManager.stopDownload(args.id)
+    return { ok: true }
+  })
+  
+  ipcMain.handle('models:start-runtime', async (event, args: { id: string }) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window) return { ok: false, error: 'No window found' }
+    try {
+      await modelManager.startRuntime(args.id, window)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: String(error) }
+    }
+  })
+  
+  ipcMain.handle('models:stop-runtime', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    try {
+      await modelManager.stopRuntime(window!)
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: String(error) }
+    }
+  })
+  
+  // Minimal text generation endpoint to talk to the loaded local model
+  ipcMain.handle('models:prompt', async (event, args: { message: string }) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window) return { ok: false, error: 'No window' }
+    try {
+      const response = await modelManager.promptModel(args.message, (token: string) => {
+        window.webContents.send('models:token', { token })
+      })
+      return { ok: true, text: response }
+    } catch (error) {
+      return { ok: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('models:delete', async (event, id: string) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) return { ok: false, error: 'No window found' };
+    try {
+      await modelManager.deleteModel(id, window);
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err.message };
+    }
+  });
 }

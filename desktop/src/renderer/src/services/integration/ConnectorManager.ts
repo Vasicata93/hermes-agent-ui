@@ -29,7 +29,7 @@ class ConnectorManager {
    */
   private async checkAndRestoreConnection(connectorId: string) {
     try {
-      const creds = await db.connectors.get(connectorId);
+      const creds = await db.get<ConnectorCredential>('connectors', connectorId);
       if (creds && (creds.accessToken || creds.apiKey)) {
         // We have credentials, assume connected for now. 
         // In a real app, we might want to validate the token here.
@@ -47,7 +47,7 @@ class ConnectorManager {
    */
   public async saveCredentials(credentials: ConnectorCredential) {
     try {
-      await db.connectors.put(credentials);
+      await db.put('connectors', credentials);
       useIntegrationStore.getState().updateConnectorStatus(credentials.connectorId, 'connected');
 
       // SYNC TO BACKEND
@@ -78,7 +78,7 @@ class ConnectorManager {
    * Retrieves credentials for a connector.
    */
   public async getCredentials(connectorId: string): Promise<ConnectorCredential | undefined> {
-    return await db.connectors.get(connectorId);
+    return (await db.get<ConnectorCredential>('connectors', connectorId)) || undefined;
   }
 
   /**
@@ -86,7 +86,7 @@ class ConnectorManager {
    */
   public async disconnect(connectorId: string) {
     try {
-      await db.connectors.delete(connectorId);
+      await db.delete('connectors', connectorId);
       useIntegrationStore.getState().updateConnectorStatus(connectorId, 'disconnected');
       
       const ENV_MAP: Record<string, string> = {

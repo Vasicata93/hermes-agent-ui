@@ -251,7 +251,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const sidebarClasses = `
     fixed inset-y-0 left-0 z-[150] bg-pplx-sidebar border-r border-pplx-border shadow-2xl h-full
-    w-[280px] md:static md:shadow-none md:translate-x-0
+    w-[280px] md:relative md:shadow-none md:translate-x-0
     ${isOpen ? "translate-x-0 md:w-[var(--sidebar-width)]" : "-translate-x-full md:w-0 md:border-r-0 md:overflow-hidden"}
     flex flex-col
     ${!isResizing ? "transition-all duration-150 cubic-bezier(0.4, 0, 0.2, 1)" : ""}

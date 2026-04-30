@@ -33,7 +33,8 @@ export class SystemContext {
         "Errors remain in context as resources for recovery.",
         "Append-only context.",
         "If observation > 5000 tokens, externalize to RAG.",
-        "Fallback protocol (if tool fails, try alternative)."
+        "Fallback protocol (if tool fails, try alternative).",
+        "Critical data (API keys, connectors, skills) must be persisted immediately to backend memory."
       ],
       coreSkills: {
         "Răspuns în limba userului": "Auto-detect limbă la fiecare mesaj",
