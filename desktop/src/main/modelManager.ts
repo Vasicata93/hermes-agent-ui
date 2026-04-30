@@ -224,7 +224,7 @@ export class ModelManager {
 
     const sys = this.getSystemResources();
     if (sys.totalRamMB < entry.minRamMB) {
-      throw new Error(\`Insufficient RAM. Model needs \${entry.minRamMB}MB, system has \${sys.totalRamMB}MB\`);
+      throw new Error(`Insufficient RAM. Model needs ${entry.minRamMB}MB, system has ${sys.totalRamMB}MB`);
     }
 
     // Stop currently running model if any
