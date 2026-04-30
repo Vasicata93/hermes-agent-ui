@@ -58,6 +58,8 @@ import LogsPage from "@/pages/LogsPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import CronPage from "@/pages/CronPage";
 import SkillsPage from "@/pages/SkillsPage";
+import OverviewPage from "@/pages/OverviewPage";
+import ConnectorsPage from "@/pages/ConnectorsPage";
 import ChatPage from "@/pages/ChatPage";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
@@ -86,6 +88,8 @@ const BUILTIN_ROUTES_CORE: Record<string, ComponentType> = {
   "/logs": LogsPage,
   "/cron": CronPage,
   "/skills": SkillsPage,
+  "/overview": OverviewPage,
+  "/connectors": ConnectorsPage,
   "/config": ConfigPage,
   "/env": EnvPage,
   "/docs": DocsPage,
@@ -99,6 +103,12 @@ const BUILTIN_NAV_REST: NavItem[] = [
     icon: MessageSquare,
   },
   {
+    path: "/overview",
+    labelKey: "overview",
+    label: "Overview",
+    icon: Activity,
+  },
+  {
     path: "/analytics",
     labelKey: "analytics",
     label: "Analytics",
@@ -107,6 +117,7 @@ const BUILTIN_NAV_REST: NavItem[] = [
   { path: "/logs", labelKey: "logs", label: "Logs", icon: FileText },
   { path: "/cron", labelKey: "cron", label: "Cron", icon: Clock },
   { path: "/skills", labelKey: "skills", label: "Skills", icon: Package },
+  { path: "/connectors", labelKey: "connectors", label: "Connectors", icon: Zap },
   { path: "/config", labelKey: "config", label: "Config", icon: Settings },
   { path: "/env", labelKey: "keys", label: "Keys", icon: KeyRound },
   {

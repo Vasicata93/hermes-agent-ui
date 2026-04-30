@@ -1,587 +1,524 @@
-import { useEffect, useLayoutEffect, useState, useMemo } from "react";
-import {
-  Package,
-  Search,
-  Wrench,
-  X,
-  Cpu,
-  Globe,
-  Shield,
-  Eye,
-  Paintbrush,
-  Brain,
-  Blocks,
-  Code,
-  Zap,
-  Filter,
-} from "lucide-react";
-import { api } from "@/lib/api";
-import type { SkillInfo, ToolsetInfo } from "@/lib/api";
-import { useToast } from "@/hooks/useToast";
-import { Toast } from "@/components/Toast";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { useI18n } from "@/i18n";
-import { usePageHeader } from "@/contexts/usePageHeader";
-import { PluginSlot } from "@/plugins";
+import { useToast } from "@/hooks/useToast";
+import {
+  SkillInfo,
+  SkillHubItem,
+  api,
+} from "@/lib/api";
+import { CheckCircle, XCircle, Plus, Settings, Search, ExternalLink, RefreshCw, Download, Upload } from "lucide-react";
 
-/* ------------------------------------------------------------------ */
-/*  Types & helpers                                                    */
-/* ------------------------------------------------------------------ */
-
-const CATEGORY_LABELS: Record<string, string> = {
-  mlops: "MLOps",
-  "mlops/cloud": "MLOps / Cloud",
-  "mlops/evaluation": "MLOps / Evaluation",
-  "mlops/inference": "MLOps / Inference",
-  "mlops/models": "MLOps / Models",
-  "mlops/training": "MLOps / Training",
-  "mlops/vector-databases": "MLOps / Vector DBs",
-  mcp: "MCP",
-  "red-teaming": "Red Teaming",
-  ocr: "OCR",
-  p5js: "p5.js",
-  ai: "AI",
-  ux: "UX",
-  ui: "UI",
+const STATUS_COLORS: Record<string, string> = {
+  active: "bg-green-500",
+  disabled: "bg-gray-500",
+  hub_installed: "bg-blue-500",
+  updating: "bg-yellow-500",
 };
-
-function prettyCategory(
-  raw: string | null | undefined,
-  generalLabel: string,
-): string {
-  if (!raw) return generalLabel;
-  if (CATEGORY_LABELS[raw]) return CATEGORY_LABELS[raw];
-  return raw
-    .split(/[-_/]/)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-const TOOLSET_ICONS: Record<
-  string,
-  React.ComponentType<{ className?: string }>
-> = {
-  computer: Cpu,
-  web: Globe,
-  security: Shield,
-  vision: Eye,
-  design: Paintbrush,
-  ai: Brain,
-  integration: Blocks,
-  code: Code,
-  automation: Zap,
-};
-
-function toolsetIcon(
-  name: string,
-): React.ComponentType<{ className?: string }> {
-  const lower = name.toLowerCase();
-  for (const [key, icon] of Object.entries(TOOLSET_ICONS)) {
-    if (lower.includes(key)) return icon;
-  }
-  return Wrench;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Component                                                          */
-/* ------------------------------------------------------------------ */
 
 export default function SkillsPage() {
+  const { toast } = useToast();
   const [skills, setSkills] = useState<SkillInfo[]>([]);
-  const [toolsets, setToolsets] = useState<ToolsetInfo[]>([]);
+  const [hubCatalog, setHubCatalog] = useState<SkillHubItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [view, setView] = useState<"skills" | "toolsets">("skills");
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [togglingSkills, setTogglingSkills] = useState<Set<string>>(new Set());
-  const { toast, showToast } = useToast();
-  const { t } = useI18n();
-  const { setAfterTitle, setEnd } = usePageHeader();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loadingHub, setLoadingHub] = useState(false);
+  const [activeTab, setActiveTab] = useState<"installed" | "hub">("installed");
+
+  const fetchData = async () => {
+    try {
+      const response = await api.getSkills();
+      setSkills(response);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Eroare la încărcarea skill-urilor";
+      toast({
+        title: "Eroare",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchHubCatalog = async () => {
+    setLoadingHub(true);
+    try {
+      const response = await api.getSkillHubCatalog({ page: 1, pageSize: 100 });
+      setHubCatalog(response.items);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Eroare la încărcarea SkillHub";
+      toast({
+        title: "Eroare",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingHub(false);
+    }
+  };
 
   useEffect(() => {
-    Promise.all([api.getSkills(), api.getToolsets()])
-      .then(([s, tsets]) => {
-        setSkills(s);
-        setToolsets(tsets);
-      })
-      .catch(() => showToast(t.common.loading, "error"))
-      .finally(() => setLoading(false));
+    fetchData();
   }, []);
 
-  /* ---- Toggle skill ---- */
-  const handleToggleSkill = async (skill: SkillInfo) => {
-    setTogglingSkills((prev) => new Set(prev).add(skill.name));
+  useEffect(() => {
+    if (activeTab === "hub") {
+      fetchHubCatalog();
+    }
+  }, [activeTab]);
+
+  const handleToggleSkill = async (name: string, enabled: boolean) => {
     try {
-      await api.toggleSkill(skill.name, !skill.enabled);
-      setSkills((prev) =>
-        prev.map((s) =>
-          s.name === skill.name ? { ...s, enabled: !s.enabled } : s,
-        ),
-      );
-      showToast(
-        `${skill.name} ${skill.enabled ? t.common.disabled : t.common.enabled}`,
-        "success",
-      );
-    } catch {
-      showToast(`${t.common.failedToToggle} ${skill.name}`, "error");
-    } finally {
-      setTogglingSkills((prev) => {
-        const next = new Set(prev);
-        next.delete(skill.name);
-        return next;
+      await api.toggleSkill(name, enabled);
+      toast({
+        title: "Reușit",
+        description: enabled
+          ? `Skill-ul ${name} a fost activat`
+          : `Skill-ul ${name} a fost dezactivat`,
+        variant: "success",
+      });
+      await fetchData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Eroare la modificare";
+      toast({
+        title: "Eroare",
+        description: message,
+        variant: "destructive",
       });
     }
   };
 
-  /* ---- Derived data ---- */
-  const lowerSearch = search.toLowerCase();
-  const isSearching = search.trim().length > 0;
-
-  const searchMatchedSkills = useMemo(() => {
-    if (!isSearching) return [];
-    return skills.filter(
-      (s) =>
-        s.name.toLowerCase().includes(lowerSearch) ||
-        s.description.toLowerCase().includes(lowerSearch) ||
-        (s.category ?? "").toLowerCase().includes(lowerSearch),
-    );
-  }, [skills, isSearching, lowerSearch]);
-
-  const activeSkills = useMemo(() => {
-    if (isSearching) return [];
-    if (!activeCategory)
-      return [...skills].sort((a, b) => a.name.localeCompare(b.name));
-    return skills
-      .filter((s) =>
-        activeCategory === "__none__"
-          ? !s.category
-          : s.category === activeCategory,
-      )
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [skills, activeCategory, isSearching]);
-
-  const allCategories = useMemo(() => {
-    const cats = new Map<string, number>();
-    for (const s of skills) {
-      const key = s.category || "__none__";
-      cats.set(key, (cats.get(key) || 0) + 1);
+  const handleSearchHub = async (query: string) => {
+    setSearchQuery(query);
+    if (!query) return;
+    setLoadingHub(true);
+    try {
+      const response = await api.getSkillHubCatalog({ query, page: 1, pageSize: 100 });
+      setHubCatalog(response.items);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Eroare la căutare";
+      toast({
+        title: "Eroare",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingHub(false);
     }
-    return [...cats.entries()]
-      .sort((a, b) => {
-        if (a[0] === "__none__") return -1;
-        if (b[0] === "__none__") return 1;
-        return a[0].localeCompare(b[0]);
-      })
-      .map(([key, count]) => ({
-        key,
-        name: prettyCategory(key === "__none__" ? null : key, t.common.general),
-        count,
-      }));
-  }, [skills, t]);
+  };
 
-  const enabledCount = skills.filter((s) => s.enabled).length;
-
-  useLayoutEffect(() => {
-    if (loading) {
-      setAfterTitle(null);
-      setEnd(null);
-      return;
+  const handleInstallHubItem = async (item: SkillHubItem) => {
+    try {
+      const response = await api.installSkillHubItem({
+        identifier: item.identifier,
+        category: item.source,
+        force: false,
+      });
+      toast({
+        title: "Reușit",
+        description: `Skill-ul ${item.name} a fost instalat`,
+        variant: "success",
+      });
+      await fetchData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Eroare la instalare";
+      toast({
+        title: "Eroare",
+        description: message,
+        variant: "destructive",
+      });
     }
-    setAfterTitle(
-      <span className="whitespace-nowrap text-xs text-muted-foreground">
-        {t.skills.enabledOf
-          .replace("{enabled}", String(enabledCount))
-          .replace("{total}", String(skills.length))}
-      </span>,
-    );
-    setEnd(
-      <div className="relative w-full min-w-0 sm:max-w-xs">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-        <Input
-          className="h-8 pl-8 pr-7 text-xs"
-          placeholder={t.common.search}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {search && (
-          <button
-            type="button"
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            onClick={() => setSearch("")}
-          >
-            <X className="h-3 w-3" />
-          </button>
-        )}
-      </div>,
-    );
-    return () => {
-      setAfterTitle(null);
-      setEnd(null);
-    };
-  }, [
-    enabledCount,
-    loading,
-    search,
-    setAfterTitle,
-    setEnd,
-    skills.length,
-    t,
-  ]);
+  };
 
-  const filteredToolsets = useMemo(() => {
-    return toolsets.filter(
-      (ts) =>
-        !search ||
-        ts.name.toLowerCase().includes(lowerSearch) ||
-        ts.label.toLowerCase().includes(lowerSearch) ||
-        ts.description.toLowerCase().includes(lowerSearch),
-    );
-  }, [toolsets, search, lowerSearch]);
+  const handleUpdateHubItem = async (name: string) => {
+    try {
+      const response = await api.updateHubSkillItems(name);
+      toast({
+        title: "Reușit",
+        description: `Skill-ul ${name} a fost actualizat`,
+        variant: "success",
+      });
+      await fetchData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Eroare la actualizare";
+      toast({
+        title: "Eroare",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
 
-  /* ---- Loading ---- */
+  const handleCheckUpdates = async () => {
+    try {
+      const updates = await api.checkHubSkillUpdates();
+      const updateNames = Object.keys(updates);
+      if (updateNames.length === 0) {
+        toast({
+          title: "Reușit",
+          description: "Nu există actualizări disponibile",
+          variant: "success",
+        });
+      } else {
+        toast({
+          title: "Reușit",
+          description: `${updateNames.length} skill-uri au actualizări disponibile`,
+          variant: "success",
+        });
+      }
+      await fetchData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Eroare la verificare";
+      toast({
+        title: "Eroare",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUninstallSkill = async (name: string) => {
+    try {
+      await api.uninstallHubSkill(name);
+      toast({
+        title: "Reușit",
+        description: `Skill-ul ${name} a fost dezinstalat`,
+        variant: "success",
+      });
+      await fetchData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Eroare la dezinstalare";
+      toast({
+        title: "Eroare",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getSkillStatus = (skill: SkillInfo) => {
+    if (skill.enabled) return "active";
+    if (skill.hub_installed && skill.update_status) return "updating";
+    if (skill.hub_installed) return "hub_installed";
+    return "disabled";
+  };
+
+  const getSkillStatusLabel = (status: string) => {
+    switch (status) {
+      case "active": return "Activ";
+      case "disabled": return "Inactiv";
+      case "hub_installed": return "De la Hub";
+      case "updating": return "Actualizare";
+      default: return status;
+    }
+  };
+
+  const getHubInstalledSkills = () =>
+    skills.filter((skill) => skill.hub_installed);
+
+  const getOtherSkills = () => skills.filter((skill) => !skill.hub_installed);
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="container mx-auto p-6">
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            Se încarcă skill-urile...
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <PluginSlot name="skills:top" />
-      <Toast toast={toast} />
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Gestionare Skill-uri</h1>
+          <p className="text-muted-foreground">Activează, dezactivează și actualizează skill-uri</p>
+        </div>
+        <div className="flex gap-2">
+          <a
+            href="https://skillhub.luo.ac/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+          >
+            <ExternalLink className="w-5 h-5" />
+            Deschide SkillHub
+          </a>
+        </div>
+      </div>
 
-      {/* ═══════════════ Filter panel + Content ═══════════════ */}
-      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-        {/* ---- Filter panel ---- */}
-        <aside
-          aria-label={t.skills.title}
-          className="sm:w-56 sm:shrink-0"
+      <div className="flex gap-2 border-b border-border pb-4">
+        <Button
+          variant={activeTab === "installed" ? "default" : "outline"}
+          onClick={() => setActiveTab("installed")}
         >
-          <div className="sm:sticky sm:top-0">
-            <div
-              className={`
-                flex flex-col
-                border border-border bg-muted/20
-              `}
-            >
-              {/* Filter heading */}
-              <div className="hidden sm:flex items-center gap-2 px-3 py-2 border-b border-border">
-                <Filter className="h-3 w-3 text-muted-foreground" />
-                <span className="font-mondwest text-[0.65rem] tracking-[0.12em] uppercase text-muted-foreground">
-                  {t.skills.filters}
-                </span>
-              </div>
+          <Settings className="w-4 h-4 mr-2" />
+          Installed
+        </Button>
+        <Button
+          variant={activeTab === "hub" ? "default" : "outline"}
+          onClick={() => setActiveTab("hub")}
+        >
+          <Search className="w-4 h-4 mr-2" />
+          SkillHub Catalog
+        </Button>
+        <Button
+          variant="outline"
+          onClick={handleCheckUpdates}
+        >
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Check Updates
+        </Button>
+      </div>
 
-              {/* View switch (Skills / Toolsets) */}
-              <div className="flex sm:flex-col gap-1 overflow-x-auto sm:overflow-x-visible scrollbar-none p-2">
-                <PanelItem
-                  icon={Package}
-                  label={`${t.skills.all} (${skills.length})`}
-                  active={view === "skills" && !isSearching}
-                  onClick={() => {
-                    setView("skills");
-                    setActiveCategory(null);
-                    setSearch("");
-                  }}
-                />
-                <PanelItem
-                  icon={Wrench}
-                  label={`${t.skills.toolsets} (${toolsets.length})`}
-                  active={view === "toolsets"}
-                  onClick={() => {
-                    setView("toolsets");
-                    setSearch("");
-                  }}
-                />
-              </div>
-
-              {/* Category sub-filters (only for Skills view) */}
-              {view === "skills" && !isSearching && allCategories.length > 0 && (
-                <div className="hidden sm:flex flex-col border-t border-border">
-                  <div className="px-3 pt-2 pb-1 font-mondwest text-[0.6rem] tracking-[0.12em] uppercase text-muted-foreground/70">
-                    {t.skills.categories}
-                  </div>
-                  <div className="flex flex-col p-2 pt-1 gap-px max-h-[calc(100vh-340px)] overflow-y-auto">
-                    {allCategories.map(({ key, name, count }) => {
-                      const isActive = activeCategory === key;
-
+      <div className="space-y-6">
+        {activeTab === "installed" ? (
+          <>
+            {getHubInstalledSkills().length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Installate din SkillHub</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {getHubInstalledSkills().map((skill) => {
+                      const status = getSkillStatus(skill);
                       return (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() =>
-                            setActiveCategory(isActive ? null : key)
-                          }
-                          className={`
-                            group flex items-center gap-2 px-2 py-1
-                            rounded-sm text-left text-[11px] cursor-pointer
-                            transition-colors
-                            ${
-                              isActive
-                                ? "bg-foreground/10 text-foreground"
-                                : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
-                            }
-                          `}
+                        <div
+                          key={skill.name}
+                          className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
                         >
-                          <span className="flex-1 truncate">{name}</span>
-                          <span
-                            className={`text-[10px] tabular-nums ${
-                              isActive
-                                ? "text-foreground/60"
-                                : "text-muted-foreground/50"
-                            }`}
-                          >
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </aside>
-
-        {/* ---- Content ---- */}
-        <div className="flex-1 min-w-0">
-          {isSearching ? (
-            /* Search results */
-            <Card>
-              <CardHeader className="py-3 px-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Search className="h-4 w-4" />
-                    {t.skills.title}
-                  </CardTitle>
-                  <Badge variant="secondary" className="text-[10px]">
-                    {t.skills.resultCount
-                      .replace("{count}", String(searchMatchedSkills.length))
-                      .replace(
-                        "{s}",
-                        searchMatchedSkills.length !== 1 ? "s" : "",
-                      )}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="px-4 pb-4">
-                {searchMatchedSkills.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">
-                    {t.skills.noSkillsMatch}
-                  </p>
-                ) : (
-                  <div className="grid gap-1">
-                    {searchMatchedSkills.map((skill) => (
-                      <SkillRow
-                        key={skill.name}
-                        skill={skill}
-                        toggling={togglingSkills.has(skill.name)}
-                        onToggle={() => handleToggleSkill(skill)}
-                        noDescriptionLabel={t.skills.noDescription}
-                      />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : view === "skills" ? (
-            /* Skills list */
-            <Card>
-              <CardHeader className="py-3 px-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Package className="h-4 w-4" />
-                    {activeCategory
-                      ? prettyCategory(
-                          activeCategory === "__none__" ? null : activeCategory,
-                          t.common.general,
-                        )
-                      : t.skills.all}
-                  </CardTitle>
-                  <Badge variant="secondary" className="text-[10px]">
-                    {t.skills.skillCount
-                      .replace("{count}", String(activeSkills.length))
-                      .replace("{s}", activeSkills.length !== 1 ? "s" : "")}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="px-4 pb-4">
-                {activeSkills.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">
-                    {skills.length === 0
-                      ? t.skills.noSkills
-                      : t.skills.noSkillsMatch}
-                  </p>
-                ) : (
-                  <div className="grid gap-1">
-                    {activeSkills.map((skill) => (
-                      <SkillRow
-                        key={skill.name}
-                        skill={skill}
-                        toggling={togglingSkills.has(skill.name)}
-                        onToggle={() => handleToggleSkill(skill)}
-                        noDescriptionLabel={t.skills.noDescription}
-                      />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            /* Toolsets grid */
-            <>
-              {filteredToolsets.length === 0 ? (
-                <Card>
-                  <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                    {t.skills.noToolsetsMatch}
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {filteredToolsets.map((ts) => {
-                    const TsIcon = toolsetIcon(ts.name);
-                    const labelText =
-                      ts.label.replace(/^[\p{Emoji}\s]+/u, "").trim() ||
-                      ts.name;
-
-                    return (
-                      <Card key={ts.name} className="relative">
-                        <CardContent className="py-4">
-                          <div className="flex items-start gap-3">
-                            <TsIcon className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium text-sm">
-                                  {labelText}
-                                </span>
-                                <Badge
-                                  variant={ts.enabled ? "success" : "outline"}
-                                  className="text-[10px]"
-                                >
-                                  {ts.enabled
-                                    ? t.common.active
-                                    : t.common.inactive}
+                          <div className="flex items-center gap-4">
+                            <div className={`p-2 rounded-lg ${STATUS_COLORS[status]} bg-opacity-10`}>
+                              <CheckCircle
+                                className={`h-5 w-5 ${
+                                  status === "active" ? "text-green-500" :
+                                  status === "hub_installed" ? "text-blue-500" :
+                                  status === "updating" ? "text-yellow-500" : "text-gray-500"
+                                }`}
+                              />
+                            </div>
+                            <div>
+                              <h3 className="font-medium">{skill.name}</h3>
+                              <p className="text-sm text-muted-foreground">{skill.description}</p>
+                              {skill.source && (
+                                <Badge variant="outline" className="text-xs mt-1">
+                                  {skill.source}
                                 </Badge>
-                              </div>
-                              <p className="text-xs text-muted-foreground mb-2">
-                                {ts.description}
-                              </p>
-                              {ts.enabled && !ts.configured && (
-                                <p className="text-[10px] text-amber-300/80 mb-2">
-                                  {t.skills.setupNeeded}
-                                </p>
                               )}
-                              {ts.tools.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                  {ts.tools.map((tool) => (
-                                    <Badge
-                                      key={tool}
-                                      variant="secondary"
-                                      className="text-[10px] font-mono"
-                                    >
-                                      {tool}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                              {ts.tools.length === 0 && (
-                                <span className="text-[10px] text-muted-foreground/60">
-                                  {ts.enabled
-                                    ? t.skills.toolsetLabel.replace(
-                                        "{name}",
-                                        ts.name,
-                                      )
-                                    : t.skills.disabledForCli}
-                                </span>
+                              {skill.install_path && (
+                                <Badge variant="outline" className="text-xs mt-1">
+                                  {skill.install_path}
+                                </Badge>
                               )}
                             </div>
                           </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                          <div className="flex items-center gap-2">
+                            <Badge className={STATUS_COLORS[status]}>
+                              {getSkillStatusLabel(status)}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                handleToggleSkill(skill.name, !skill.enabled)
+                              }
+                            >
+                              {skill.enabled ? "Dezactivați" : "Activați"}
+                            </Button>
+                            {skill.update_status && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleUpdateHubItem(skill.name)}
+                              >
+                                <RefreshCw className="w-4 h-4 mr-1" />
+                                Update
+                              </Button>
+                            )}
+                            {skill.update_status === null && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleUninstallSkill(skill.name)}
+                              >
+                                <XCircle className="w-4 h-4 mr-1" />
+                                Uninstall
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {getOtherSkills().length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Alte Skill-uri</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {getOtherSkills().map((skill) => (
+                      <div
+                        key={skill.name}
+                        className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
+                      >
+                        <div>
+                          <h3 className="font-medium">{skill.name}</h3>
+                          <p className="text-sm text-muted-foreground">{skill.description}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={skill.enabled ? "default" : "outline"}>
+                            {skill.enabled ? "Activ" : "Inactiv"}
+                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleToggleSkill(skill.name, !skill.enabled)}
+                          >
+                            {skill.enabled ? "Dezactivați" : "Activați"}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {skills.length === 0 && (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <Settings className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <h3 className="text-lg font-medium mb-2">Niciun skill configurat</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Accesionați SkillHub pentru a descoperi și adăuga skill-uri
+                  </p>
+                  <a
+                    href="https://skillhub.luo.ac/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-primary hover:underline"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Deschide SkillHub
+                  </a>
+                </CardContent>
+              </Card>
+            )}
+          </>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Search className="w-5 h-5" />
+                SkillHub Catalog
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Căutați skill-uri..."
+                    value={searchQuery}
+                    onChange={(e) => handleSearchHub(e.target.value)}
+                    className="pl-10"
+                  />
                 </div>
-              )}
-            </>
-          )}
-        </div>
+
+                {loadingHub ? (
+                  <div className="flex items-center justify-center py-12">
+                    <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : hubCatalog.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>Nu s-au găsit skill-uri</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {hubCatalog.map((item) => (
+                      <div
+                        key={item.identifier}
+                        className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`p-2 rounded-lg ${
+                            item.trust === "trusted" ? "bg-green-100 dark:bg-green-950/50" :
+                            item.trust === "community" ? "bg-blue-100 dark:bg-blue-950/50" :
+                            "bg-gray-100 dark:bg-gray-950/50"
+                          }`}>
+                            <Download
+                              className={`h-5 w-5 ${
+                                item.trust === "trusted" ? "text-green-600 dark:text-green-400" :
+                                item.trust === "community" ? "text-blue-600 dark:text-blue-400" :
+                                "text-gray-600 dark:text-gray-400"
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <h3 className="font-medium">{item.name}</h3>
+                            <p className="text-sm text-muted-foreground line-clamp-2">
+                              {item.description}
+                            </p>
+                            <div className="flex items-center gap-2 mt-2">
+                              <Badge variant="outline" className="text-xs">
+                                {item.source}
+                              </Badge>
+                              {item.installed && (
+                                <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950/50">
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Installed
+                                </Badge>
+                              )}
+                              {item.update_status && (
+                                <Badge variant="outline" className="text-xs bg-yellow-50 dark:bg-yellow-950/50">
+                                  <RefreshCw className="w-3 h-3 mr-1" />
+                                  {item.update_status}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!item.installed ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handleInstallHubItem(item)}
+                            >
+                              <Download className="w-4 h-4 mr-1" />
+                              Install
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdateHubItem(item.name)}
+                            >
+                              <RefreshCw className="w-4 h-4 mr-1" />
+                              Update
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
-      <PluginSlot name="skills:bottom" />
     </div>
   );
-}
-
-function SkillRow({
-  skill,
-  toggling,
-  onToggle,
-  noDescriptionLabel,
-}: SkillRowProps) {
-  return (
-    <div className="group flex items-start gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40">
-      <div className="pt-0.5 shrink-0">
-        <Switch
-          checked={skill.enabled}
-          onCheckedChange={onToggle}
-          disabled={toggling}
-        />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span
-            className={`font-mono-ui text-sm ${
-              skill.enabled ? "text-foreground" : "text-muted-foreground"
-            }`}
-          >
-            {skill.name}
-          </span>
-        </div>
-        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-          {skill.description || noDescriptionLabel}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function PanelItem({ active, icon: Icon, label, onClick }: PanelItemProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`
-        group flex items-center gap-2 px-2.5 py-1.5
-        font-mondwest text-[0.7rem] tracking-[0.08em] uppercase
-        rounded-sm text-left cursor-pointer whitespace-nowrap
-        transition-colors
-        ${
-          active
-            ? "bg-foreground/90 text-background"
-            : "text-muted-foreground hover:text-foreground hover:bg-foreground/10"
-        }
-      `}
-    >
-      <Icon className="h-3.5 w-3.5 shrink-0" />
-      <span className="flex-1 truncate">{label}</span>
-    </button>
-  );
-}
-
-interface PanelItemProps {
-  active: boolean;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  onClick: () => void;
-}
-
-interface SkillRowProps {
-  noDescriptionLabel: string;
-  onToggle: () => void;
-  skill: SkillInfo;
-  toggling: boolean;
 }

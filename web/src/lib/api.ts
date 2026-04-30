@@ -45,6 +45,7 @@ async function getSessionToken(): Promise<string> {
 
 export const api = {
   getStatus: () => fetchJSON<StatusResponse>("/api/status"),
+  getOverview: () => fetchJSON<OverviewResponse>("/api/overview"),
   getSessions: (limit = 20, offset = 0) =>
     fetchJSON<PaginatedSessions>(`/api/sessions?limit=${limit}&offset=${offset}`),
   getSessionMessages: (id: string) =>
@@ -130,7 +131,73 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, enabled }),
     }),
+  getSkillHubCatalog: (params?: {
+    query?: string;
+    page?: number;
+    pageSize?: number;
+    source?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.query) qs.set("query", params.query);
+    if (params?.page) qs.set("page", String(params.page));
+    if (params?.pageSize) qs.set("page_size", String(params.pageSize));
+    if (params?.source) qs.set("source", params.source);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return fetchJSON<SkillHubCatalogResponse>(`/api/skills/hub${suffix}`);
+  },
+  inspectSkillHubItem: (identifier: string) =>
+    fetchJSON<SkillHubInspectResponse>(
+      `/api/skills/hub/inspect?identifier=${encodeURIComponent(identifier)}`,
+    ),
+  installSkillHubItem: (body: {
+    identifier: string;
+    category?: string;
+    force?: boolean;
+  }) =>
+    fetchJSON<SkillHubInstallResponse>("/api/skills/hub/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  getSkillHubUpdates: (name?: string) => {
+    const suffix = name ? `?name=${encodeURIComponent(name)}` : "";
+    return fetchJSON<SkillHubUpdatesResponse>(`/api/skills/hub/updates${suffix}`);
+  },
+  updateSkillHubItems: (name?: string) =>
+    fetchJSON<{ ok: boolean; updated: SkillHubInstallResponse[] }>(
+      "/api/skills/hub/update",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      },
+    ),
+  uninstallSkillHubItem: (name: string) =>
+    fetchJSON<{ ok: boolean; message: string; name: string }>(
+      `/api/skills/hub/${encodeURIComponent(name)}`,
+      {
+        method: "DELETE",
+      },
+    ),
   getToolsets: () => fetchJSON<ToolsetInfo[]>("/api/tools/toolsets"),
+  getConnectors: () => fetchJSON<ConnectorsResponse>("/api/connectors"),
+  updateConnector: (
+    key: string,
+    body: {
+      enabled: boolean;
+      values?: Record<string, string | null>;
+      reply_to_mode?: string | null;
+      extra_json?: string | null;
+    },
+  ) =>
+    fetchJSON<{ ok: boolean; connector: ConnectorInfo | null }>(
+      `/api/connectors/${encodeURIComponent(key)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ),
 
   // Session search (FTS5)
   searchSessions: (q: string) =>
@@ -256,6 +323,59 @@ export interface StatusResponse {
   latest_config_version: number;
   release_date: string;
   version: string;
+}
+
+export interface OverviewLogEntry {
+  source: string;
+  line: string;
+}
+
+export interface OverviewResponse {
+  refreshed_at: string;
+  status: StatusResponse;
+  system: {
+    hostname: string;
+    platform: string;
+    python_version: string;
+    process_id: number;
+    uptime_seconds: number;
+    cpu_count: number;
+    load_avg_1m: number | null;
+    load_avg_5m: number | null;
+    load_avg_15m: number | null;
+    memory_rss_mb: number | null;
+    disk_total_gb: number;
+    disk_used_gb: number;
+    disk_free_gb: number;
+  };
+  agent: {
+    model: string;
+    provider: string;
+    effective_context_length: number;
+    capabilities: ModelInfoResponse["capabilities"];
+  };
+  usage: {
+    period_days: number;
+    totals: AnalyticsResponse["totals"];
+    daily: AnalyticsDailyEntry[];
+    top_models: AnalyticsModelEntry[];
+    top_skills: AnalyticsSkillEntry[];
+  };
+  activity: {
+    recent_sessions: SessionInfo[];
+    recent_logs: OverviewLogEntry[];
+  };
+  capabilities: {
+    total_skills: number;
+    enabled_skills: number;
+    hub_installed_skills: number;
+    total_toolsets: number;
+    enabled_toolsets: number;
+    total_connectors: number;
+    configured_connectors: number;
+    enabled_connectors: number;
+    connected_connectors: number;
+  };
 }
 
 export interface SessionInfo {
@@ -389,6 +509,70 @@ export interface SkillInfo {
   description: string;
   category: string;
   enabled: boolean;
+  hub_installed?: boolean;
+  install_path?: string | null;
+  source?: string;
+  update_status?: string | null;
+}
+
+export interface SkillHubItem {
+  name: string;
+  description: string;
+  source: string;
+  identifier: string;
+  trust: string;
+  tags: string[];
+  installed: boolean;
+  enabled: boolean;
+  update_status?: string | null;
+  install_path?: string | null;
+  detail_url?: string | null;
+  repo_url?: string | null;
+}
+
+export interface SkillHubCatalogResponse {
+  items: SkillHubItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+  query: string;
+  source: string;
+  catalog_url: string;
+}
+
+export interface SkillHubInspectResponse {
+  name: string;
+  description: string;
+  source: string;
+  identifier: string;
+  tags: string[];
+  skill_md_preview?: string;
+  catalog_url: string;
+}
+
+export interface SkillHubInstallResponse {
+  ok: boolean;
+  name: string;
+  identifier: string;
+  source: string;
+  trust: string;
+  category: string;
+  install_path: string;
+  scan_verdict: string;
+  scan_report: string;
+}
+
+export interface SkillHubUpdateEntry {
+  name: string;
+  identifier: string;
+  source: string;
+  status: string;
+}
+
+export interface SkillHubUpdatesResponse {
+  items: SkillHubUpdateEntry[];
+  catalog_url: string;
 }
 
 export interface ToolsetInfo {
@@ -398,6 +582,43 @@ export interface ToolsetInfo {
   enabled: boolean;
   configured: boolean;
   tools: string[];
+}
+
+export interface ConnectorField {
+  name: string;
+  label: string;
+  help: string;
+  password: boolean;
+  is_allowlist: boolean;
+  is_set: boolean;
+  value: string;
+  redacted_value: string | null;
+}
+
+export interface ConnectorInfo {
+  key: string;
+  label: string;
+  emoji: string;
+  enabled: boolean;
+  configured: boolean;
+  connected: boolean;
+  state: string;
+  updated_at?: string | null;
+  setup_instructions: string[];
+  fields: ConnectorField[];
+  reply_to_mode: string;
+  supports_reply_to_mode: boolean;
+  extra_json: string;
+  home_channel?: {
+    platform: string;
+    chat_id: string;
+    name: string;
+  } | null;
+}
+
+export interface ConnectorsResponse {
+  items: ConnectorInfo[];
+  catalog_url: string;
 }
 
 export interface SessionSearchResult {

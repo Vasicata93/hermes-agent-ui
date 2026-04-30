@@ -66,6 +66,7 @@ export const zh: Translations = {
       stopped: "已停止",
     },
     nav: {
+      connectors: "连接器",
       analytics: "分析",
       chat: "对话",
       config: "配置",
@@ -73,6 +74,7 @@ export const zh: Translations = {
       documentation: "文档",
       keys: "密钥",
       logs: "日志",
+      overview: "概览",
       sessions: "会话",
       skills: "技能",
     },

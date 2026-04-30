@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -60,8 +61,15 @@ except ImportError:
         f"Install with: {sys.executable} -m pip install 'fastapi' 'uvicorn[standard]'"
     )
 
+try:
+    import resource
+except ImportError:  # pragma: no cover - platform dependent
+    resource = None
+
 WEB_DIST = Path(os.environ["HERMES_WEB_DIST"]) if "HERMES_WEB_DIST" in os.environ else Path(__file__).parent / "web_dist"
 _log = logging.getLogger(__name__)
+_SERVER_STARTED_AT = time.time()
+_SKILL_HUB_CATALOG_URL = "https://hermes-agent.nousresearch.com/docs/reference/skills-catalog"
 
 app = FastAPI(title="Hermes Agent", version=__version__)
 
@@ -437,6 +445,23 @@ class EnvVarReveal(BaseModel):
     key: str
 
 
+class ConnectorUpdate(BaseModel):
+    enabled: bool
+    values: Dict[str, Optional[str]] = {}
+    reply_to_mode: Optional[str] = None
+    extra_json: Optional[str] = None
+
+
+class SkillHubInstallRequest(BaseModel):
+    identifier: str
+    category: str = ""
+    force: bool = False
+
+
+class SkillHubUpdateRequest(BaseModel):
+    name: Optional[str] = None
+
+
 _GATEWAY_HEALTH_URL = os.getenv("GATEWAY_HEALTH_URL")
 try:
     _GATEWAY_HEALTH_TIMEOUT = float(os.getenv("GATEWAY_HEALTH_TIMEOUT", "3"))
@@ -482,6 +507,278 @@ def _probe_gateway_health() -> tuple[bool, dict | None]:
         except Exception:
             continue
     return False, None
+
+
+def _safe_process_rss_mb() -> float | None:
+    """Return the current process RSS in MiB when the platform exposes it."""
+    if resource is None:
+        return None
+    try:
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    except Exception:
+        return None
+    if rss <= 0:
+        return None
+    # macOS reports bytes; Linux reports KiB.
+    if sys.platform == "darwin":
+        return round(rss / (1024 * 1024), 2)
+    return round(rss / 1024, 2)
+
+
+def _tail_log_file(path: Path, limit: int = 10) -> List[str]:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    return [line for line in lines[-limit:] if line.strip()]
+
+
+def _connector_setup_catalog() -> List[Dict[str, Any]]:
+    from hermes_cli.gateway import _PLATFORMS
+
+    return [entry for entry in _PLATFORMS if entry.get("key")]
+
+
+def _connector_payloads(status: Optional[dict] = None) -> List[Dict[str, Any]]:
+    from gateway.config import Platform, load_gateway_config
+
+    env_vars = load_env()
+    gateway_config = load_gateway_config()
+    status = status or {}
+    runtime_platforms = status.get("gateway_platforms") or {}
+    connected_platforms = {
+        platform.value for platform in gateway_config.get_connected_platforms()
+    }
+    reply_mode_platforms = {"telegram", "slack", "mattermost"}
+    payloads: List[Dict[str, Any]] = []
+
+    for meta in _connector_setup_catalog():
+        key = meta["key"]
+        try:
+            platform = Platform(key)
+        except ValueError:
+            platform = None
+        platform_cfg = gateway_config.platforms.get(platform) if platform else None
+        runtime_state = runtime_platforms.get(key, {})
+        field_payloads = []
+        any_value_set = False
+
+        for field in meta.get("vars", []):
+            env_name = field["name"]
+            current = env_vars.get(env_name, "")
+            is_secret = bool(field.get("password"))
+            if current:
+                any_value_set = True
+            field_payloads.append({
+                "name": env_name,
+                "label": field.get("prompt", env_name),
+                "help": field.get("help", ""),
+                "password": is_secret,
+                "is_allowlist": bool(field.get("is_allowlist")),
+                "is_set": bool(current),
+                "value": "" if is_secret else current,
+                "redacted_value": redact_key(current) if is_secret and current else current,
+            })
+
+        extra_json = ""
+        if platform_cfg and platform_cfg.extra:
+            extra_json = json.dumps(platform_cfg.extra, indent=2, sort_keys=True)
+
+        configured = (
+            key in connected_platforms
+            or any_value_set
+            or bool(platform_cfg and (platform_cfg.extra or platform_cfg.home_channel))
+        )
+        payloads.append({
+            "key": key,
+            "label": meta.get("label", key.title()),
+            "emoji": meta.get("emoji", ""),
+            "enabled": bool(platform_cfg.enabled) if platform_cfg else False,
+            "configured": configured,
+            "connected": key in connected_platforms,
+            "state": runtime_state.get("state", "disconnected"),
+            "updated_at": runtime_state.get("updated_at"),
+            "setup_instructions": meta.get("setup_instructions", []),
+            "fields": field_payloads,
+            "reply_to_mode": platform_cfg.reply_to_mode if platform_cfg else "first",
+            "supports_reply_to_mode": key in reply_mode_platforms,
+            "extra_json": extra_json,
+            "home_channel": platform_cfg.home_channel.to_dict() if platform_cfg and platform_cfg.home_channel else None,
+        })
+
+    payloads.sort(key=lambda item: (not item["connected"], not item["configured"], item["label"].lower()))
+    return payloads
+
+
+def _hub_results(query: str = "", page: int = 1, page_size: int = 20, source: str = "all") -> Dict[str, Any]:
+    from tools.skills_hub import GitHubAuth, create_source_router, unified_search
+    from hermes_cli.skills_config import get_disabled_skills
+
+    auth = GitHubAuth()
+    sources = create_source_router(auth)
+    trust_rank = {"builtin": 3, "trusted": 2, "community": 1}
+    page_size = max(1, min(page_size, 100))
+    query = (query or "").strip()
+
+    if query:
+        all_results = unified_search(query, sources, source_filter=source, limit=200)
+    else:
+        per_source_limit = {
+            "official": 120,
+            "skills-sh": 120,
+            "well-known": 40,
+            "github": 120,
+            "clawhub": 80,
+            "claude-marketplace": 80,
+            "lobehub": 80,
+        }
+        all_results = []
+        for src in sources:
+            sid = src.source_id()
+            if source != "all" and sid != source and sid != "official":
+                continue
+            try:
+                all_results.extend(src.search("", limit=per_source_limit.get(sid, 50)))
+            except Exception:
+                continue
+
+    deduped_by_identifier: Dict[str, Any] = {}
+    deduped_by_name: Dict[str, Any] = {}
+    for result in all_results:
+        existing = deduped_by_name.get(result.name)
+        if existing is None or trust_rank.get(result.trust_level, 0) > trust_rank.get(existing.trust_level, 0):
+            deduped_by_name[result.name] = result
+        deduped_by_identifier[result.identifier] = result
+
+    deduped = list(deduped_by_identifier.values()) if query else list(deduped_by_name.values())
+    deduped.sort(
+        key=lambda result: (
+            -trust_rank.get(result.trust_level, 0),
+            result.source != "official",
+            result.name.lower(),
+        )
+    )
+
+    total = len(deduped)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * page_size
+    items = deduped[start : min(start + page_size, total)]
+
+    from tools.skills_hub import HubLockFile, check_for_skill_updates
+
+    installed_entries = {entry["name"]: entry for entry in HubLockFile().list_installed()}
+    disabled = get_disabled_skills(load_config())
+    updates = {
+        entry.get("name", ""): entry.get("status", "")
+        for entry in check_for_skill_updates()
+    }
+
+    serialized_items = []
+    for item in items:
+        installed = installed_entries.get(item.name)
+        serialized_items.append({
+            "name": item.name,
+            "description": item.description,
+            "source": item.source,
+            "identifier": item.identifier,
+            "trust": item.trust_level,
+            "tags": list(item.tags) if item.tags else [],
+            "installed": item.name in installed_entries,
+            "enabled": item.name not in disabled if item.name in installed_entries else False,
+            "update_status": updates.get(item.name),
+            "install_path": installed.get("install_path") if installed else None,
+            "detail_url": (item.extra or {}).get("detail_url"),
+            "repo_url": (item.extra or {}).get("repo_url"),
+        })
+
+    return {
+        "items": serialized_items,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+        "query": query,
+        "source": source,
+        "catalog_url": _SKILL_HUB_CATALOG_URL,
+    }
+
+
+def _install_skill_from_hub(identifier: str, category: str = "", force: bool = False) -> Dict[str, Any]:
+    from tools.skills_guard import format_scan_report, scan_skill, should_allow_install
+    from tools.skills_hub import (
+        GitHubAuth,
+        HubLockFile,
+        create_source_router,
+        ensure_hub_dirs,
+        install_from_quarantine,
+        quarantine_bundle,
+    )
+    from hermes_cli.skills_hub import _resolve_source_meta_and_bundle
+
+    ensure_hub_dirs()
+    auth = GitHubAuth()
+    sources = create_source_router(auth)
+    meta, bundle, _matched_source = _resolve_source_meta_and_bundle(identifier, sources)
+    if not bundle:
+        raise HTTPException(status_code=404, detail=f"Could not fetch '{identifier}' from the Skills Hub")
+
+    if bundle.source == "official" and not category:
+        id_parts = bundle.identifier.split("/")
+        if len(id_parts) >= 3:
+            category = id_parts[1]
+
+    existing = HubLockFile().get_installed(bundle.name)
+    if existing and not force:
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{bundle.name}' is already installed. Use force=true to reinstall.",
+        )
+
+    try:
+        quarantine_path = quarantine_bundle(bundle)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    scan_source = getattr(bundle, "identifier", "") or getattr(meta, "identifier", "") or identifier
+    scan_result = scan_skill(quarantine_path, source=scan_source)
+    allowed, reason = should_allow_install(scan_result, force=force)
+    if not allowed:
+        shutil.rmtree(quarantine_path, ignore_errors=True)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": reason,
+                "scan_report": format_scan_report(scan_result),
+                "verdict": scan_result.verdict,
+            },
+        )
+
+    install_dir = install_from_quarantine(
+        quarantine_path,
+        bundle.name,
+        category,
+        bundle,
+        scan_result,
+    )
+    try:
+        from agent.prompt_builder import clear_skills_system_prompt_cache
+
+        clear_skills_system_prompt_cache(clear_snapshot=True)
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "name": bundle.name,
+        "identifier": bundle.identifier,
+        "source": bundle.source,
+        "trust": bundle.trust_level,
+        "category": category,
+        "install_path": str(install_dir),
+        "scan_verdict": scan_result.verdict,
+        "scan_report": format_scan_report(scan_result),
+    }
 
 
 @app.get("/api/status")
@@ -587,6 +884,98 @@ async def get_status():
         "gateway_exit_reason": gateway_exit_reason,
         "gateway_updated_at": gateway_updated_at,
         "active_sessions": active_sessions,
+    }
+
+
+@app.get("/api/overview")
+async def get_overview():
+    from hermes_state import SessionDB
+    from tools.skills_hub import HubLockFile
+
+    status = await get_status()
+    analytics = await get_usage_analytics(days=30)
+    toolsets = await get_toolsets()
+    skills = await get_skills()
+    connectors = _connector_payloads(status=status)
+    model_info = await get_model_info()
+
+    db = SessionDB()
+    recent_sessions: List[dict] = []
+    try:
+        recent_sessions = sorted(
+            db.list_sessions_rich(limit=8),
+            key=lambda session: session.get("last_active", session.get("started_at", 0)),
+            reverse=True,
+        )
+    finally:
+        db.close()
+
+    logs_dir = get_hermes_home() / "logs"
+    recent_logs = []
+    for file_name in ("agent.log", "gateway.log", "errors.log"):
+        for line in _tail_log_file(logs_dir / file_name, limit=5):
+            recent_logs.append({"source": file_name, "line": line})
+
+    disk = shutil.disk_usage(get_hermes_home())
+    load_avg = None
+    try:
+        load_avg = os.getloadavg()
+    except OSError:
+        load_avg = None
+
+    hub_installed = HubLockFile().list_installed()
+    enabled_skills = sum(1 for skill in skills if skill.get("enabled"))
+    enabled_toolsets = sum(1 for toolset in toolsets if toolset.get("enabled"))
+    configured_connectors = sum(1 for connector in connectors if connector.get("configured"))
+    enabled_connectors = sum(1 for connector in connectors if connector.get("enabled"))
+    connected_connectors = sum(1 for connector in connectors if connector.get("connected"))
+
+    return {
+        "refreshed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "status": status,
+        "system": {
+            "hostname": os.uname().nodename,
+            "platform": sys.platform,
+            "python_version": sys.version.split()[0],
+            "process_id": os.getpid(),
+            "uptime_seconds": round(time.time() - _SERVER_STARTED_AT, 2),
+            "cpu_count": os.cpu_count() or 0,
+            "load_avg_1m": round(load_avg[0], 2) if load_avg else None,
+            "load_avg_5m": round(load_avg[1], 2) if load_avg else None,
+            "load_avg_15m": round(load_avg[2], 2) if load_avg else None,
+            "memory_rss_mb": _safe_process_rss_mb(),
+            "disk_total_gb": round(disk.total / (1024 ** 3), 2),
+            "disk_used_gb": round(disk.used / (1024 ** 3), 2),
+            "disk_free_gb": round(disk.free / (1024 ** 3), 2),
+        },
+        "agent": {
+            "model": model_info.get("model"),
+            "provider": model_info.get("provider"),
+            "effective_context_length": model_info.get("effective_context_length"),
+            "capabilities": model_info.get("capabilities", {}),
+        },
+        "usage": {
+            "period_days": analytics.get("period_days", 30),
+            "totals": analytics.get("totals", {}),
+            "daily": analytics.get("daily", []),
+            "top_models": analytics.get("by_model", [])[:5],
+            "top_skills": (analytics.get("skills", {}) or {}).get("top_skills", [])[:5],
+        },
+        "activity": {
+            "recent_sessions": recent_sessions,
+            "recent_logs": recent_logs[-12:],
+        },
+        "capabilities": {
+            "total_skills": len(skills),
+            "enabled_skills": enabled_skills,
+            "hub_installed_skills": len(hub_installed),
+            "total_toolsets": len(toolsets),
+            "enabled_toolsets": enabled_toolsets,
+            "total_connectors": len(connectors),
+            "configured_connectors": configured_connectors,
+            "enabled_connectors": enabled_connectors,
+            "connected_connectors": connected_connectors,
+        },
     }
 
 
@@ -2425,6 +2814,81 @@ async def delete_cron_job(job_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Connectors endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/connectors")
+async def get_connectors():
+    status = await get_status()
+    return {
+        "items": _connector_payloads(status=status),
+        "catalog_url": "https://hermes-agent.nousresearch.com/docs/user-guide/messaging/",
+    }
+
+
+@app.put("/api/connectors/{connector_key}")
+async def update_connector(connector_key: str, body: ConnectorUpdate):
+    catalog = {item["key"]: item for item in _connector_setup_catalog()}
+    meta = catalog.get(connector_key)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Connector not found")
+
+    allowed_env_names = {field["name"] for field in meta.get("vars", [])}
+    unknown_names = set(body.values.keys()) - allowed_env_names
+    if unknown_names:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown connector field(s): {', '.join(sorted(unknown_names))}",
+        )
+
+    config = load_config()
+    platforms_cfg = config.setdefault("platforms", {})
+    if not isinstance(platforms_cfg, dict):
+        platforms_cfg = {}
+        config["platforms"] = platforms_cfg
+    connector_cfg = platforms_cfg.setdefault(connector_key, {})
+    if not isinstance(connector_cfg, dict):
+        connector_cfg = {}
+        platforms_cfg[connector_key] = connector_cfg
+
+    connector_cfg["enabled"] = body.enabled
+
+    if body.reply_to_mode is not None:
+        if body.reply_to_mode not in {"off", "first", "all", "thread"}:
+            raise HTTPException(status_code=400, detail="Invalid reply_to_mode")
+        connector_cfg["reply_to_mode"] = body.reply_to_mode
+
+    if body.extra_json is not None:
+        if body.extra_json.strip():
+            try:
+                extra_value = json.loads(body.extra_json)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid JSON in extra_json: {exc}")
+            if not isinstance(extra_value, dict):
+                raise HTTPException(status_code=400, detail="extra_json must decode to an object")
+            connector_cfg["extra"] = extra_value
+        else:
+            connector_cfg.pop("extra", None)
+
+    save_config(config)
+
+    for env_name, value in body.values.items():
+        if value is None:
+            remove_env_value(env_name)
+            continue
+        cleaned = value.strip()
+        if cleaned:
+            save_env_value(env_name, cleaned)
+        else:
+            remove_env_value(env_name)
+
+    refreshed = _connector_payloads(status=await get_status())
+    connector = next((item for item in refreshed if item["key"] == connector_key), None)
+    return {"ok": True, "connector": connector}
+
+
+# ---------------------------------------------------------------------------
 # Skills & Tools endpoints
 # ---------------------------------------------------------------------------
 
@@ -2437,12 +2901,25 @@ class SkillToggle(BaseModel):
 @app.get("/api/skills")
 async def get_skills():
     from tools.skills_tool import _find_all_skills
+    from tools.skills_hub import HubLockFile, check_for_skill_updates
     from hermes_cli.skills_config import get_disabled_skills
+
     config = load_config()
     disabled = get_disabled_skills(config)
+    hub_installed = {
+        entry["name"]: entry for entry in HubLockFile().list_installed()
+    }
+    updates = {
+        entry.get("name", ""): entry.get("status", "")
+        for entry in check_for_skill_updates()
+    }
     skills = _find_all_skills(skip_disabled=True)
     for s in skills:
         s["enabled"] = s["name"] not in disabled
+        s["hub_installed"] = s["name"] in hub_installed
+        s["install_path"] = hub_installed.get(s["name"], {}).get("install_path")
+        s["source"] = hub_installed.get(s["name"], {}).get("source", "local")
+        s["update_status"] = updates.get(s["name"])
     return skills
 
 
@@ -2457,6 +2934,94 @@ async def toggle_skill(body: SkillToggle):
         disabled.add(body.name)
     save_disabled_skills(config, disabled)
     return {"ok": True, "name": body.name, "enabled": body.enabled}
+
+
+@app.get("/api/skills/hub")
+async def get_skill_hub_catalog(
+    query: str = "",
+    page: int = 1,
+    page_size: int = 20,
+    source: str = "all",
+):
+    return _hub_results(query=query, page=page, page_size=page_size, source=source)
+
+
+@app.get("/api/skills/hub/inspect")
+async def inspect_skill_hub_item(identifier: str):
+    from hermes_cli.skills_hub import inspect_skill
+
+    details = inspect_skill(identifier)
+    if not details:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    details["catalog_url"] = _SKILL_HUB_CATALOG_URL
+    return details
+
+
+@app.post("/api/skills/hub/install")
+async def install_skill_hub_item(body: SkillHubInstallRequest):
+    return _install_skill_from_hub(
+        identifier=body.identifier,
+        category=body.category,
+        force=body.force,
+    )
+
+
+@app.get("/api/skills/hub/updates")
+async def get_skill_hub_updates(name: Optional[str] = None):
+    from tools.skills_hub import check_for_skill_updates
+
+    return {
+        "items": check_for_skill_updates(name=name),
+        "catalog_url": _SKILL_HUB_CATALOG_URL,
+    }
+
+
+@app.post("/api/skills/hub/update")
+async def update_skill_hub_items(body: SkillHubUpdateRequest):
+    from tools.skills_hub import HubLockFile, check_for_skill_updates
+
+    updates = [
+        entry
+        for entry in check_for_skill_updates(name=body.name)
+        if entry.get("status") == "update_available"
+    ]
+    if not updates:
+        return {"ok": True, "updated": []}
+
+    lock = HubLockFile()
+    updated = []
+    for entry in updates:
+        installed = lock.get_installed(entry["name"])
+        install_path = installed.get("install_path", "") if installed else ""
+        category = Path(install_path).parent.as_posix()
+        if category == ".":
+            category = ""
+        result = _install_skill_from_hub(
+            identifier=entry["identifier"],
+            category=category,
+            force=True,
+        )
+        updated.append(result)
+
+    return {"ok": True, "updated": updated}
+
+
+@app.delete("/api/skills/hub/{skill_name}")
+async def uninstall_skill_hub_item(skill_name: str):
+    from tools.skills_hub import uninstall_skill
+
+    ok, message = uninstall_skill(skill_name)
+    if not ok:
+        raise HTTPException(status_code=404, detail=message)
+
+    try:
+        from agent.prompt_builder import clear_skills_system_prompt_cache
+
+        clear_skills_system_prompt_cache(clear_snapshot=True)
+    except Exception:
+        pass
+
+    return {"ok": True, "message": message, "name": skill_name}
 
 
 @app.get("/api/tools/toolsets")

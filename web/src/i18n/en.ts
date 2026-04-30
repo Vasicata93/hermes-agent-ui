@@ -67,6 +67,7 @@ export const en: Translations = {
       stopped: "Stopped",
     },
     nav: {
+      connectors: "Connectors",
       analytics: "Analytics",
       chat: "Chat",
       config: "Config",
@@ -74,6 +75,7 @@ export const en: Translations = {
       documentation: "Documentation",
       keys: "Keys",
       logs: "Logs",
+      overview: "Overview",
       sessions: "Sessions",
       skills: "Skills",
     },

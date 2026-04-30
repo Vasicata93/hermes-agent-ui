@@ -67,6 +67,7 @@ export interface Translations {
       stopped: string;
     };
     nav: {
+      connectors: string;
       analytics: string;
       chat: string;
       config: string;
@@ -74,6 +75,7 @@ export interface Translations {
       documentation: string;
       keys: string;
       logs: string;
+      overview: string;
       sessions: string;
       skills: string;
     };
